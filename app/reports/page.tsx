@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
@@ -53,6 +54,8 @@ export default function ReportsPage() {
           <p><strong>Work Completed:</strong> {r.work_completed}</p>
           <p><strong>Labour:</strong> {r.labour}</p>
           <p><strong>Issues / Notes:</strong> {r.issues}</p>
+
+<Link href={`/reports/${r.id}`}>View Report</Link>
         </div>
       ))}
     </main>
