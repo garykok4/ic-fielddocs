@@ -8,6 +8,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
 
   async function signUp() {
+    if (!email || !password) {
+      alert("Please enter both email and password.");
+      return;
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -18,10 +23,15 @@ export default function LoginPage() {
       return;
     }
 
-    alert("Account created.");
+    alert("Account created. You can now sign in.");
   }
 
   async function signIn() {
+    if (!email || !password) {
+      alert("Please enter both email and password.");
+      return;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -34,25 +44,6 @@ export default function LoginPage() {
 
     window.location.href = "/";
   }
-
-async function signUp() {
-  if (!email || !password) {
-    alert("Please enter both email and password.");
-    return;
-  }
-
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-  });
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  alert("Account created. You can now sign in.");
-}
 
   return (
     <main style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
@@ -84,13 +75,8 @@ async function signUp() {
       />
 
       <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={signIn} style={{ padding: "10px 18px" }}>
-          Sign In
-        </button>
-
-        <button onClick={signUp} style={{ padding: "10px 18px" }}>
-          Create Account
-        </button>
+        <button onClick={signIn}>Sign In</button>
+        <button onClick={signUp}>Create Account</button>
       </div>
     </main>
   );
