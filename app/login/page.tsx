@@ -1,0 +1,97 @@
+"use client";
+
+import { useState } from "react";
+import { supabase } from "../../lib/supabase";
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  async function signUp() {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Account created.");
+  }
+
+  async function signIn() {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    window.location.href = "/";
+  }
+
+async function signUp() {
+  if (!email || !password) {
+    alert("Please enter both email and password.");
+    return;
+  }
+
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Account created. You can now sign in.");
+}
+
+  return (
+    <main style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
+      <h1>Staff Login</h1>
+
+      <input
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        style={{
+          display: "block",
+          width: "100%",
+          padding: 10,
+          marginBottom: 12,
+        }}
+      />
+
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        style={{
+          display: "block",
+          width: "100%",
+          padding: 10,
+          marginBottom: 12,
+        }}
+      />
+
+      <div style={{ display: "flex", gap: 12 }}>
+        <button onClick={signIn} style={{ padding: "10px 18px" }}>
+          Sign In
+        </button>
+
+        <button onClick={signUp} style={{ padding: "10px 18px" }}>
+          Create Account
+        </button>
+      </div>
+    </main>
+  );
+}

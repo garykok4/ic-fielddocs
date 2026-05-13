@@ -8,7 +8,8 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchReports();
+    checkUser();
+fetchReports();
   }, []);
 
   async function fetchReports() {
@@ -30,6 +31,17 @@ export default function ReportsPage() {
 
     setReports(data || []);
   }
+
+async function checkUser() {
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user) {
+    window.location.href = "/login";
+    return;
+  }
+
+  setUser(data.user);
+}
 
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>

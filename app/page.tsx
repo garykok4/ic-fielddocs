@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 export default function Home() {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [user, setUser] = useState<any>(null);
+const [projects, setProjects] = useState<any[]>([]);
   const [projectName, setProjectName] = useState("");
   const [address, setAddress] = useState("");
 
   useEffect(() => {
-    fetchProjects();
+    checkUser();
+fetchProjects();
   }, []);
 
   async function fetchProjects() {
@@ -20,6 +22,17 @@ export default function Home() {
 
     if (!error) setProjects(data || []);
   }
+
+async function checkUser() {
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user) {
+    window.location.href = "/login";
+    return;
+  }
+
+  setUser(data.user);
+}
 
   async function addProject() {
     if (!projectName) return alert("Project name is required");

@@ -7,7 +7,8 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchProjects();
+   checkUser();
+fetchProjects();
   }, []);
 
   async function fetchProjects() {
@@ -18,6 +19,17 @@ export default function ProjectsPage() {
 
     if (!error) setProjects(data || []);
   }
+
+async function checkUser() {
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user) {
+    window.location.href = "/login";
+    return;
+  }
+
+  setUser(data.user);
+}
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>

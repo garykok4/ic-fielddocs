@@ -11,10 +11,13 @@ export default function NewDailyReportPage() {
   const [workCompleted, setWorkCompleted] = useState("");
   const [labour, setLabour] = useState("");
   const [issues, setIssues] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
 
   useEffect(() => {
     fetchProjects();
-    setReportDate(new Date().toISOString().split("T")[0]);
+    const today = new Date();
+const localDate = today.toLocaleDateString("en-CA");
+setReportDate(localDate);
   }, []);
 
   async function fetchProjects() {
@@ -30,20 +33,48 @@ export default function NewDailyReportPage() {
     if (!projectId) return alert("Please select a project.");
     if (!reportDate) return alert("Please enter a report date.");
 
-    const { error } = await supabase.from("daily_reports").insert([
-      {
-        project_id: projectId,
-        report_date: reportDate,
-        weather,
-        work_completed: workCompleted,
-        labour,
-        issues,
-      },
-    ]);
+    const { data: reportData, error: reportError } = await supabase
+      .from("daily_reports")
+      .insert([
+        {
+          project_id: projectId,
+          report_date: reportDate,
+          weather,
+          work_completed: workCompleted,
+          labour,
+          issues,
+        },
+      ])
+      .select()
+      .single();
 
-    if (error) {
-      alert(error.message);
+    if (reportError) {
+      alert(reportError.message);
       return;
+    }
+
+    if (photo) {
+      const filePath = `${reportData.id}/${Date.now()}-${photo.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("report-photos")
+        .upload(filePath, photo);
+
+      if (uploadError) {
+        alert(uploadError.message);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("report-photos")
+        .getPublicUrl(filePath);
+
+      await supabase.from("attachments").insert([
+        {
+          report_id: reportData.id,
+          file_url: publicUrlData.publicUrl,
+        },
+      ]);
     }
 
     alert("Daily report submitted.");
@@ -52,6 +83,7 @@ export default function NewDailyReportPage() {
     setWorkCompleted("");
     setLabour("");
     setIssues("");
+    setPhoto(null);
   }
 
   return (
@@ -66,6 +98,7 @@ export default function NewDailyReportPage() {
           style={{ display: "block", width: "100%", padding: 8 }}
         >
           <option value="">Select project</option>
+
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.project_name}
@@ -76,49 +109,78 @@ export default function NewDailyReportPage() {
 
       <div style={{ marginBottom: 12 }}>
         <label>Date</label>
+
         <input
-          type="date"
-          value={reportDate}
-          onChange={(e) => setReportDate(e.target.value)}
-          style={{ display: "block", width: "100%", padding: 8 }}
-        />
+  type="date"
+  value={reportDate}
+  onChange={(e) => setReportDate(e.target.value)}
+  style={{ display: "block", width: "100%", padding: 8 }}
+/>
       </div>
 
       <div style={{ marginBottom: 12 }}>
         <label>Weather</label>
+
         <input
           value={weather}
           onChange={(e) => setWeather(e.target.value)}
-          placeholder="Sunny, cloudy, rain, temperature, etc."
           style={{ display: "block", width: "100%", padding: 8 }}
         />
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label>Work Completed Today</label>
+        <label>Work Completed</label>
+
         <textarea
           value={workCompleted}
           onChange={(e) => setWorkCompleted(e.target.value)}
-          style={{ display: "block", width: "100%", padding: 8, minHeight: 100 }}
+          style={{
+            display: "block",
+            width: "100%",
+            padding: 8,
+            minHeight: 100,
+          }}
         />
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label>Labour on Site</label>
+        <label>Labour</label>
+
         <textarea
           value={labour}
           onChange={(e) => setLabour(e.target.value)}
-          placeholder="Example: I/C - 2 workers, Stubbe's - 4 workers"
-          style={{ display: "block", width: "100%", padding: 8, minHeight: 80 }}
+          style={{
+            display: "block",
+            width: "100%",
+            padding: 8,
+            minHeight: 80,
+          }}
         />
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label>Issues / Delays / Notes</label>
+        <label>Issues / Notes</label>
+
         <textarea
           value={issues}
           onChange={(e) => setIssues(e.target.value)}
-          style={{ display: "block", width: "100%", padding: 8, minHeight: 80 }}
+          style={{
+            display: "block",
+            width: "100%",
+            padding: 8,
+            minHeight: 80,
+          }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label>Photo</label>
+
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+          style={{ display: "block", width: "100%", padding: 8 }}
         />
       </div>
 

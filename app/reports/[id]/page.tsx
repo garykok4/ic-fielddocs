@@ -7,6 +7,7 @@ import { supabase } from "../../../lib/supabase";
 export default function ReportDetailPage() {
   const params = useParams();
   const [report, setReport] = useState<any>(null);
+  const [photos, setPhotos] = useState<any[]>([]);
 
   useEffect(() => {
     if (params.id) fetchReport();
@@ -33,6 +34,13 @@ export default function ReportDetailPage() {
     }
 
     setReport(data);
+
+    const { data: photoData } = await supabase
+      .from("attachments")
+      .select("*")
+      .eq("report_id", params.id);
+
+    setPhotos(photoData || []);
   }
 
   if (!report) {
@@ -41,6 +49,15 @@ export default function ReportDetailPage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
+  <button
+    onClick={() => window.print()}
+    style={{
+      padding: "10px 18px",
+      marginBottom: 20,
+    }}
+  >
+    Print / Save PDF
+  </button>
       <h1>Daily Site Report</h1>
 
       <section style={{ border: "1px solid #ccc", padding: 20, borderRadius: 8 }}>
@@ -62,6 +79,27 @@ export default function ReportDetailPage() {
 
         <p><strong>Issues / Delays / Notes:</strong></p>
         <p>{report.issues || "—"}</p>
+
+        <hr />
+
+        <h3>Photos</h3>
+
+        {photos.length === 0 && <p>No photos uploaded.</p>}
+
+        {photos.map((photo) => (
+          <img
+            key={photo.id}
+            src={photo.file_url}
+            alt="Report photo"
+            style={{
+              width: "100%",
+              maxWidth: 500,
+              display: "block",
+              marginBottom: 16,
+              borderRadius: 8,
+            }}
+          />
+        ))}
       </section>
     </main>
   );

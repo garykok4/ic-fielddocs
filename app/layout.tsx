@@ -1,17 +1,19 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import "./globals.css";
+"use client";
 
-export const metadata: Metadata = {
-  title: "I/C FieldDocs",
-  description: "Private field documentation app",
-};
+import "./globals.css";
+import Link from "next/link";
+import { supabase } from "../lib/supabase";
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
   return (
     <html lang="en">
       <body>
@@ -27,6 +29,11 @@ export default function RootLayout({
           <Link href="/projects">Projects</Link>
           <Link href="/reports">Reports</Link>
           <Link href="/reports/new">New Report</Link>
+          <Link href="/login">Login</Link>
+
+          <button onClick={logout} style={{ marginLeft: "auto" }}>
+            Logout
+          </button>
         </nav>
 
         {children}
