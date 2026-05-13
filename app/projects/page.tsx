@@ -28,7 +28,6 @@ async function checkUser() {
     return;
   }
 
-  setUser(data.user);
 }
 
   return (
