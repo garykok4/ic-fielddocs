@@ -31,7 +31,6 @@ async function checkUser() {
     return;
   }
 
-  setUser(data.user);
 }
 
   async function addProject() {
