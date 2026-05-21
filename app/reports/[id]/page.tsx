@@ -1,7 +1,6 @@
 "use client";
 
 import { requireActiveStaff } from "../../../lib/auth";
-
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
@@ -10,13 +9,36 @@ export default function ReportDetailPage() {
   const params = useParams();
   const [report, setReport] = useState<any>(null);
   const [photos, setPhotos] = useState<any[]>([]);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    requireActiveStaff();
-    if (params.id) fetchReport();
+    async function loadData() {
+      const profile = await requireActiveStaff();
+
+      if (!profile) return;
+
+      fetchReport(profile);
+    }
+
+    loadData();
   }, [params.id]);
 
-  async function fetchReport() {
+  async function userCanAccessProject(profile: any, projectId: string) {
+    if (profile.role === "admin") return true;
+
+    const { data, error } = await supabase
+      .from("project_staff")
+      .select("id")
+      .eq("staff_id", profile.id)
+      .eq("project_id", projectId)
+      .maybeSingle();
+
+    if (error || !data) return false;
+
+    return true;
+  }
+
+  async function fetchReport(profile: any) {
     const { data, error } = await supabase
       .from("daily_reports")
       .select(`
@@ -36,6 +58,13 @@ export default function ReportDetailPage() {
       return;
     }
 
+    const allowed = await userCanAccessProject(profile, data.project_id);
+
+    if (!allowed) {
+      setAccessDenied(true);
+      return;
+    }
+
     setReport(data);
 
     const { data: photoData } = await supabase
@@ -46,24 +75,28 @@ export default function ReportDetailPage() {
     setPhotos(photoData || []);
   }
 
+  if (accessDenied) {
+    return (
+      <main style={{ padding: 24 }}>
+        <h1>Access Denied</h1>
+        <p>You do not have access to this project report.</p>
+      </main>
+    );
+  }
+
   if (!report) {
     return <main style={{ padding: 24 }}>Loading report...</main>;
   }
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-  <button
-    onClick={() => window.print()}
-    style={{
-      padding: "10px 18px",
-      marginBottom: 20,
-    }}
-  >
-    Print / Save PDF
-  </button>
+      <button onClick={() => window.print()}>
+        Print / Save PDF
+      </button>
+
       <h1>Daily Site Report</h1>
 
-      <section style={{ border: "1px solid #ccc", padding: 20, borderRadius: 8 }}>
+      <section className="card">
         <h2>{report.projects?.project_name}</h2>
         <p><strong>Address:</strong> {report.projects?.address}</p>
         <p><strong>Location:</strong> {report.projects?.city}, {report.projects?.province}</p>
@@ -107,5 +140,3 @@ export default function ReportDetailPage() {
     </main>
   );
 }
-
-

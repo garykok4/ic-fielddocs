@@ -1,36 +1,82 @@
 "use client";
 
 import { requireActiveStaff } from "../../../lib/auth";
-
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
 export default function SignInSummaryPage() {
   const [records, setRecords] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [profile, setProfile] = useState<any>(null);
+
   const [selectedProject, setSelectedProject] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
-    requireActiveStaff();
-    fetchProjects();
+    async function loadData() {
+      const staffProfile = await requireActiveStaff();
 
-    const today = new Date().toLocaleDateString("en-CA");
-    setFromDate(today);
-    setToDate(today);
+      if (!staffProfile) return;
+
+      setProfile(staffProfile);
+
+      const today = new Date().toLocaleDateString("en-CA");
+      setFromDate(today);
+      setToDate(today);
+
+      await fetchProjects(staffProfile);
+    }
+
+    loadData();
   }, []);
 
-  async function fetchProjects() {
+  async function getAssignedProjectIds(staffProfile: any) {
+    if (staffProfile.role === "admin") return null;
+
+    const { data, error } = await supabase
+      .from("project_staff")
+      .select("project_id")
+      .eq("staff_id", staffProfile.id);
+
+    if (error) {
+      alert(error.message);
+      return [];
+    }
+
+    return data?.map((row: any) => row.project_id) || [];
+  }
+
+  async function fetchProjects(staffProfile: any) {
+    if (staffProfile.role === "admin") {
+      const { data } = await supabase
+        .from("projects")
+        .select("*")
+        .order("project_name");
+
+      setProjects(data || []);
+      return;
+    }
+
+    const assignedProjectIds = await getAssignedProjectIds(staffProfile);
+
+    if (!assignedProjectIds || assignedProjectIds.length === 0) {
+      setProjects([]);
+      return;
+    }
+
     const { data } = await supabase
       .from("projects")
       .select("*")
+      .in("id", assignedProjectIds)
       .order("project_name");
 
     setProjects(data || []);
   }
 
-  async function fetchSummary() {
+  async function fetchSummary(staffProfile = profile) {
+    if (!staffProfile) return;
+
     let query = supabase
       .from("trade_sign_ins")
       .select(`
@@ -40,6 +86,17 @@ export default function SignInSummaryPage() {
         )
       `)
       .order("sign_in_date", { ascending: false });
+
+    if (staffProfile.role !== "admin") {
+      const assignedProjectIds = await getAssignedProjectIds(staffProfile);
+
+      if (!assignedProjectIds || assignedProjectIds.length === 0) {
+        setRecords([]);
+        return;
+      }
+
+      query = query.in("project_id", assignedProjectIds);
+    }
 
     if (selectedProject) {
       query = query.eq("project_id", selectedProject);
@@ -81,6 +138,13 @@ export default function SignInSummaryPage() {
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
       <h1>Manpower Summary</h1>
 
+      {profile && (
+        <p>
+          Logged in as: <strong>{profile.full_name || profile.email}</strong> | Role:{" "}
+          <strong>{profile.role}</strong>
+        </p>
+      )}
+
       <section className="card">
         <h2>Filters</h2>
 
@@ -91,7 +155,7 @@ export default function SignInSummaryPage() {
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
           >
-            <option value="">All Projects</option>
+            <option value="">All Available Projects</option>
 
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -121,7 +185,7 @@ export default function SignInSummaryPage() {
           />
         </div>
 
-        <button onClick={fetchSummary}>Load Summary</button>
+        <button onClick={() => fetchSummary()}>Load Summary</button>
       </section>
 
       <section className="card">
@@ -199,5 +263,3 @@ export default function SignInSummaryPage() {
     </main>
   );
 }
-
-

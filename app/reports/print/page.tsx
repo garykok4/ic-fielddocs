@@ -1,7 +1,6 @@
 "use client";
 
 import { requireActiveStaff } from "../../../lib/auth";
-
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
@@ -9,27 +8,77 @@ export default function PrintReportsPage() {
   const [reports, setReports] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [photosByReport, setPhotosByReport] = useState<Record<string, any[]>>({});
+  const [profile, setProfile] = useState<any>(null);
 
   const [selectedProject, setSelectedProject] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
-    requireActiveStaff();
-    fetchProjects();
-    fetchReports();
+    async function loadData() {
+      const staffProfile = await requireActiveStaff();
+
+      if (!staffProfile) return;
+
+      setProfile(staffProfile);
+
+      const today = new Date().toLocaleDateString("en-CA");
+      setFromDate(today);
+      setToDate(today);
+
+      await fetchProjects(staffProfile);
+      await fetchReports(staffProfile);
+    }
+
+    loadData();
   }, []);
 
-  async function fetchProjects() {
+  async function getAssignedProjectIds(staffProfile: any) {
+    if (staffProfile.role === "admin") return null;
+
+    const { data, error } = await supabase
+      .from("project_staff")
+      .select("project_id")
+      .eq("staff_id", staffProfile.id);
+
+    if (error) {
+      alert(error.message);
+      return [];
+    }
+
+    return data?.map((row: any) => row.project_id) || [];
+  }
+
+  async function fetchProjects(staffProfile: any) {
+    if (staffProfile.role === "admin") {
+      const { data } = await supabase
+        .from("projects")
+        .select("*")
+        .order("project_name");
+
+      setProjects(data || []);
+      return;
+    }
+
+    const assignedProjectIds = await getAssignedProjectIds(staffProfile);
+
+    if (!assignedProjectIds || assignedProjectIds.length === 0) {
+      setProjects([]);
+      return;
+    }
+
     const { data } = await supabase
       .from("projects")
       .select("*")
+      .in("id", assignedProjectIds)
       .order("project_name");
 
     setProjects(data || []);
   }
 
-  async function fetchReports() {
+  async function fetchReports(staffProfile = profile) {
+    if (!staffProfile) return;
+
     let query = supabase
       .from("daily_reports")
       .select(`
@@ -42,6 +91,17 @@ export default function PrintReportsPage() {
         )
       `)
       .order("report_date", { ascending: false });
+
+    if (staffProfile.role !== "admin") {
+      const assignedProjectIds = await getAssignedProjectIds(staffProfile);
+
+      if (!assignedProjectIds || assignedProjectIds.length === 0) {
+        setReports([]);
+        return;
+      }
+
+      query = query.in("project_id", assignedProjectIds);
+    }
 
     if (selectedProject) {
       query = query.eq("project_id", selectedProject);
@@ -80,6 +140,8 @@ export default function PrintReportsPage() {
       });
 
       setPhotosByReport(grouped);
+    } else {
+      setPhotosByReport({});
     }
   }
 
@@ -87,14 +149,14 @@ export default function PrintReportsPage() {
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
       <h1>Daily Site Reports Package</h1>
 
-      <section
-        style={{
-          border: "1px solid #ccc",
-          padding: 16,
-          borderRadius: 8,
-          marginBottom: 24,
-        }}
-      >
+      {profile && (
+        <p>
+          Logged in as: <strong>{profile.full_name || profile.email}</strong> | Role:{" "}
+          <strong>{profile.role}</strong>
+        </p>
+      )}
+
+      <section className="card">
         <h2>Filters</h2>
 
         <div style={{ marginBottom: 12 }}>
@@ -103,9 +165,8 @@ export default function PrintReportsPage() {
           <select
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
-            style={{ display: "block", width: "100%", padding: 8 }}
           >
-            <option value="">All Projects</option>
+            <option value="">All Available Projects</option>
 
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -122,7 +183,6 @@ export default function PrintReportsPage() {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            style={{ display: "block", width: "100%", padding: 8 }}
           />
         </div>
 
@@ -133,25 +193,15 @@ export default function PrintReportsPage() {
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            style={{ display: "block", width: "100%", padding: 8 }}
           />
         </div>
 
-        <button
-          onClick={fetchReports}
-          style={{ padding: "10px 18px" }}
-        >
+        <button onClick={() => fetchReports()}>
           Apply Filters
         </button>
       </section>
 
-      <button
-        onClick={() => window.print()}
-        style={{
-          padding: "10px 18px",
-          marginBottom: 20,
-        }}
-      >
+      <button onClick={() => window.print()}>
         Print / Save All Reports as PDF
       </button>
 
@@ -160,11 +210,8 @@ export default function PrintReportsPage() {
       {reports.map((report) => (
         <section
           key={report.id}
+          className="card"
           style={{
-            border: "1px solid #ccc",
-            padding: 20,
-            borderRadius: 8,
-            marginBottom: 24,
             pageBreakAfter: "always",
           }}
         >
@@ -215,5 +262,3 @@ export default function PrintReportsPage() {
     </main>
   );
 }
-
-
