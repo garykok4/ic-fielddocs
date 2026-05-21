@@ -32,15 +32,15 @@ export default function RootLayout({
 
             <Link href="/projects">Projects</Link>
 
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => {
-                  setReportsOpen(!reportsOpen);
-                  setWorkforceOpen(false);
-                }}
-              >
-                Reports ▼
-              </button>
+            <div
+              style={{ position: "relative" }}
+              onMouseEnter={() => {
+                setReportsOpen(true);
+                setWorkforceOpen(false);
+              }}
+              onMouseLeave={() => setReportsOpen(false)}
+            >
+              <button>Reports ▼</button>
 
               {reportsOpen && (
                 <div
@@ -59,19 +59,28 @@ export default function RootLayout({
                   }}
                 >
                   <div style={{ marginBottom: 8 }}>
-                    <Link href="/reports" style={{ color: "#111", textDecoration: "none" }}>
+                    <Link
+                      href="/reports"
+                      style={{ color: "#111", textDecoration: "none" }}
+                    >
                       View Reports
                     </Link>
                   </div>
 
                   <div style={{ marginBottom: 8 }}>
-                    <Link href="/reports/new" style={{ color: "#111", textDecoration: "none" }}>
+                    <Link
+                      href="/reports/new"
+                      style={{ color: "#111", textDecoration: "none" }}
+                    >
                       New Report
                     </Link>
                   </div>
 
                   <div>
-                    <Link href="/reports/print" style={{ color: "#111", textDecoration: "none" }}>
+                    <Link
+                      href="/reports/print"
+                      style={{ color: "#111", textDecoration: "none" }}
+                    >
                       Print Reports
                     </Link>
                   </div>
@@ -79,15 +88,15 @@ export default function RootLayout({
               )}
             </div>
 
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => {
-                  setWorkforceOpen(!workforceOpen);
-                  setReportsOpen(false);
-                }}
-              >
-                Workforce ▼
-              </button>
+            <div
+              style={{ position: "relative" }}
+              onMouseEnter={() => {
+                setWorkforceOpen(true);
+                setReportsOpen(false);
+              }}
+              onMouseLeave={() => setWorkforceOpen(false)}
+            >
+              <button>Workforce ▼</button>
 
               {workforceOpen && (
                 <div
@@ -106,19 +115,28 @@ export default function RootLayout({
                   }}
                 >
                   <div style={{ marginBottom: 8 }}>
-                    <Link href="/sign-in/history" style={{ color: "#111", textDecoration: "none" }}>
+                    <Link
+                      href="/sign-in/history"
+                      style={{ color: "#111", textDecoration: "none" }}
+                    >
                       Sign-In History
                     </Link>
                   </div>
 
                   <div style={{ marginBottom: 8 }}>
-                    <Link href="/sign-in/summary" style={{ color: "#111", textDecoration: "none" }}>
+                    <Link
+                      href="/sign-in/summary"
+                      style={{ color: "#111", textDecoration: "none" }}
+                    >
                       Manpower Summary
                     </Link>
                   </div>
 
                   <div>
-                    <Link href="/orientation/history" style={{ color: "#111", textDecoration: "none" }}>
+                    <Link
+                      href="/orientation/history"
+                      style={{ color: "#111", textDecoration: "none" }}
+                    >
                       Orientation Records
                     </Link>
                   </div>
