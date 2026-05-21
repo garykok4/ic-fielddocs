@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../../../lib/auth";
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
@@ -10,6 +12,7 @@ export default function ReportDetailPage() {
   const [photos, setPhotos] = useState<any[]>([]);
 
   useEffect(() => {
+    requireActiveStaff();
     if (params.id) fetchReport();
   }, [params.id]);
 
@@ -104,3 +107,5 @@ export default function ReportDetailPage() {
     </main>
   );
 }
+
+

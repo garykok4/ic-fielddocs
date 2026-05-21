@@ -28,13 +28,38 @@ export default function TradeSignInPage() {
     if (!error) setProjects(data || []);
   }
 
+  function normalizePhone(value: string) {
+    return value.replace(/\D/g, "");
+  }
+
   async function submitSignIn() {
     if (!projectId) return alert("Please select a project.");
     if (!workerName) return alert("Please enter your name.");
     if (!companyName) return alert("Please enter your company.");
+    if (!phone) return alert("Please enter your phone number.");
 
     if (!acknowledged) {
       return alert("Please acknowledge the safety confirmation.");
+    }
+
+    const cleanPhone = normalizePhone(phone);
+
+    const { data: orientationData, error: orientationError } = await supabase
+      .from("site_orientations")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("phone", cleanPhone)
+      .maybeSingle();
+
+    if (orientationError) {
+      alert(orientationError.message);
+      return;
+    }
+
+    if (!orientationData) {
+      alert("Site orientation must be completed before signing in.");
+      window.location.href = "/orientation";
+      return;
     }
 
     const { error } = await supabase.from("trade_sign_ins").insert([
@@ -43,7 +68,7 @@ export default function TradeSignInPage() {
         worker_name: workerName,
         company_name: companyName,
         trade,
-        phone,
+        phone: cleanPhone,
         acknowledged: true,
       },
     ]);
@@ -77,9 +102,7 @@ export default function TradeSignInPage() {
 
         <h2>Site Sign-In</h2>
 
-        <p>
-          Please sign in before entering the work area.
-        </p>
+        <p>Please sign in before entering the work area.</p>
       </section>
 
       <section className="card">
@@ -119,8 +142,8 @@ export default function TradeSignInPage() {
           </p>
 
           <p style={{ marginTop: 20 }}>
-            In case of emergency, call 911 first and notify
-            site supervision immediately.
+            In case of emergency, call 911 first and notify site supervision
+            immediately.
           </p>
         </section>
       )}
@@ -157,10 +180,7 @@ export default function TradeSignInPage() {
         <div style={{ marginBottom: 16 }}>
           <label>Phone</label>
 
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
 
         <div style={{ marginBottom: 20 }}>
@@ -179,14 +199,12 @@ export default function TradeSignInPage() {
               style={{ width: 18, height: 18 }}
             />
 
-            I confirm I am signing in for today and will
-            follow site safety requirements.
+            I confirm I am signing in for today and will follow site safety
+            requirements.
           </label>
         </div>
 
-        <button onClick={submitSignIn}>
-          Sign In
-        </button>
+        <button onClick={submitSignIn}>Sign In</button>
       </section>
     </main>
   );

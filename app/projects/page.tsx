@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { requireActiveStaff } from "../../lib/auth";
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<any[]>([]);
 
   useEffect(() => {
-   checkUser();
-fetchProjects();
-  }, []);
+  requireActiveStaff();
+  fetchProjects();
+}, []);
 
   async function fetchProjects() {
     const { data, error } = await supabase

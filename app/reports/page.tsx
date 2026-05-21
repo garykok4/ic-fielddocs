@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../../lib/auth";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -8,6 +10,7 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<any[]>([]);
 
   useEffect(() => {
+    requireActiveStaff();
     checkUser();
 fetchReports();
   }, []);
@@ -72,3 +75,5 @@ async function checkUser() {
     </main>
   );
 }
+
+

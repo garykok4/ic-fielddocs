@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../../../lib/auth";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
@@ -13,6 +15,7 @@ export default function PrintReportsPage() {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
+    requireActiveStaff();
     fetchProjects();
     fetchReports();
   }, []);
@@ -212,3 +215,5 @@ export default function PrintReportsPage() {
     </main>
   );
 }
+
+

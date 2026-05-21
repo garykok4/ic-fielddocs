@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../lib/auth";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
@@ -10,6 +12,7 @@ const [projects, setProjects] = useState<any[]>([]);
   const [address, setAddress] = useState("");
 
   useEffect(() => {
+    requireActiveStaff();
     checkUser();
 fetchProjects();
   }, []);
@@ -106,3 +109,5 @@ async function checkUser() {
     </main>
   );
 }
+
+

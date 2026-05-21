@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../../../lib/auth";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
@@ -7,6 +9,7 @@ export default function SignInHistoryPage() {
   const [records, setRecords] = useState<any[]>([]);
 
   useEffect(() => {
+    requireActiveStaff();
     fetchRecords();
   }, []);
 
@@ -72,3 +75,5 @@ export default function SignInHistoryPage() {
     </main>
   );
 }
+
+

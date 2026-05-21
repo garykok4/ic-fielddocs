@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../../../lib/auth";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
@@ -14,6 +16,7 @@ export default function NewDailyReportPage() {
   const [photo, setPhoto] = useState<File | null>(null);
 
   useEffect(() => {
+    requireActiveStaff();
     fetchProjects();
     const today = new Date();
 const localDate = today.toLocaleDateString("en-CA");
@@ -190,3 +193,5 @@ setReportDate(localDate);
     </main>
   );
 }
+
+

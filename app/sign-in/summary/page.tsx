@@ -1,5 +1,7 @@
 "use client";
 
+import { requireActiveStaff } from "../../../lib/auth";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
@@ -11,6 +13,7 @@ export default function SignInSummaryPage() {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
+    requireActiveStaff();
     fetchProjects();
 
     const today = new Date().toLocaleDateString("en-CA");
@@ -196,3 +199,5 @@ export default function SignInSummaryPage() {
     </main>
   );
 }
+
+
