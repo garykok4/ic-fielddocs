@@ -98,7 +98,17 @@ export default function ProjectsPage() {
           <strong>{profile.role}</strong>
         </p>
       )}
+{profile?.role === "admin" && (
+  <section className="card">
+    <h2>Admin Tools</h2>
 
+    <a href="/admin/project-staff">
+      <button>
+        Manage Project Staff Assignments
+      </button>
+    </a>
+  </section>
+)}
       {editingProject && profile?.role === "admin" && (
         <section className="card">
           <h2>Edit Project</h2>
