@@ -111,7 +111,24 @@ export default function ProjectStaffPage() {
     setSelectedStaff("");
     fetchAssignments();
   }
+async function removeAssignment(assignmentId: string) {
+  const confirmed = confirm("Remove this staff member from the project?");
 
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from("project_staff")
+    .delete()
+    .eq("id", assignmentId);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Staff member removed from project.");
+  fetchAssignments();
+}
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <h1>Project Staff Assignments</h1>
@@ -177,6 +194,15 @@ export default function ProjectStaffPage() {
             </p>
             <p>Project: {a.projects?.project_name}</p>
             <p>Role: {a.role}</p>
+<button
+  onClick={() => removeAssignment(a.id)}
+  style={{
+    backgroundColor: "#dc2626",
+    marginTop: "8px",
+  }}
+>
+  Remove from Project
+</button>
           </div>
         ))}
       </section>
