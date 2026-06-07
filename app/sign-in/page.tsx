@@ -418,15 +418,16 @@ function TradeSignInPageContent() {
 
     <div style={{ marginBottom: 12 }}>
       <label>Hazards Identified</label>
-
       {hazardOptions.map((hazard) => (
         <label
           key={hazard}
           style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "flex-start",
+            display: "grid",
+            gridTemplateColumns: "22px 1fr",
+            columnGap: 10,
+            alignItems: "start",
             fontWeight: "normal",
+            lineHeight: 1.4,
             marginBottom: 8,
           }}
         >
@@ -434,14 +435,11 @@ function TradeSignInPageContent() {
             type="checkbox"
             checked={selectedHazards.includes(hazard)}
             onChange={() =>
-              toggleArrayValue(
-                hazard,
-                selectedHazards,
-                setSelectedHazards
-              )
+              toggleArrayValue(hazard, selectedHazards, setSelectedHazards)
             }
+            style={{ width: 18, height: 18, marginTop: 2 }}
           />
-          {hazard}
+          <span>{hazard}</span>
         </label>
       ))}
     </div>
@@ -454,48 +452,33 @@ function TradeSignInPageContent() {
       />
     </div>
 
-<div style={{ marginBottom: 12 }}>
-  <label>Additional PPE Required</label>
-  <p>Baseline site PPE includes hard hat, safety boots, and hi-vis.</p>
+    <div style={{ marginBottom: 12 }}>
+      <label>Additional PPE Required</label>
+      <p>Baseline site PPE includes hard hat, safety boots, and hi-vis.</p>
 
-  {ppeOptions.map((ppe) => (
-    <label
-      key={ppe}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "22px 1fr",
-        columnGap: 10,
-        alignItems: "start",
-        fontWeight: "normal",
-        lineHeight: 1.4,
-        marginBottom: 8,
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={selectedPpe.includes(ppe)}
-        onChange={() => toggleArrayValue(ppe, selectedPpe, setSelectedPpe)}
-        style={{
-          width: 18,
-          height: 18,
-          marginTop: 2,
-        }}
-      />
-      <span>{ppe}</span>
-    </label>
-  ))}
-
-  {selectedPpe.includes("Other") && (
-    <div style={{ marginTop: 12 }}>
-      <label>Other PPE Details</label>
-      <textarea
-        value={otherPpeDetails}
-        onChange={(e) => setOtherPpeDetails(e.target.value)}
-        placeholder="Describe the other PPE required."
-      />
+      {ppeOptions.map((ppe) => (
+        <label
+          key={ppe}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "22px 1fr",
+            columnGap: 10,
+            alignItems: "start",
+            fontWeight: "normal",
+            lineHeight: 1.4,
+            marginBottom: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={selectedPpe.includes(ppe)}
+            onChange={() => toggleArrayValue(ppe, selectedPpe, setSelectedPpe)}
+            style={{ width: 18, height: 18, marginTop: 2 }}
+          />
+          <span>{ppe}</span>
+        </label>
+      ))}
     </div>
-  )}
-</div>
 
     <div style={{ marginBottom: 12 }}>
       <label>Additional Notes</label>
@@ -505,37 +488,34 @@ function TradeSignInPageContent() {
       />
     </div>
 
-<label
-  style={{
-    display: "grid",
-    gridTemplateColumns: "22px 1fr",
-    columnGap: 10,
-    alignItems: "start",
-    fontWeight: "normal",
-    lineHeight: 1.4,
-    marginTop: 12,
-    marginBottom: 20,
-  }}
->
-  <input
-    type="checkbox"
-    checked={supervisorDhaAck}
-    onChange={(e) => setSupervisorDhaAck(e.target.checked)}
-    style={{
-      width: 18,
-      height: 18,
-      marginTop: 2,
-    }}
-  />
-
-  <span>I reviewed today's hazards and controls with my crew.</span>
-</label>
+    <label
+      style={{
+        display: "grid",
+        gridTemplateColumns: "22px 1fr",
+        columnGap: 10,
+        alignItems: "start",
+        fontWeight: "normal",
+        lineHeight: 1.4,
+        marginTop: 12,
+        marginBottom: 20,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={supervisorDhaAck}
+        onChange={(e) => setSupervisorDhaAck(e.target.checked)}
+        style={{ width: 18, height: 18, marginTop: 2 }}
+      />
+      <span>I reviewed today's hazards and controls with my crew.</span>
+    </label>
   </section>
 )}
 
         <button onClick={submitSignIn}>Sign In</button>
       </section>
-
+    </main>
+  );
+}
 export default function TradeSignInPage() {
   return (
     <Suspense fallback={<main style={{ padding: 24 }}>Loading sign-in...</main>}>
