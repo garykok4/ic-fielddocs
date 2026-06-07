@@ -1,10 +1,9 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-const searchParams = useSearchParams();
 const hazardOptions = [
   "Fall hazards",
   "Mobile equipment",
@@ -35,7 +34,9 @@ const ppeOptions = [
   "Other",
 ];
 
-export default function TradeSignInPage() {
+function TradeSignInPageContent() {
+  const searchParams = useSearchParams();
+
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProjectData, setSelectedProjectData] = useState<any>(null);
   const [todayAssessments, setTodayAssessments] = useState<any[]>([]);
@@ -61,16 +62,16 @@ export default function TradeSignInPage() {
   const [supervisorDhaAck, setSupervisorDhaAck] = useState(false);
 
   useEffect(() => {
-  fetchProjects();
-}, []);
+    fetchProjects();
+  }, []);
 
-useEffect(() => {
-  const projectFromUrl = searchParams.get("project");
+  useEffect(() => {
+    const projectFromUrl = searchParams.get("project");
 
-  if (projectFromUrl && projects.length > 0) {
-    handleProjectChange(projectFromUrl);
-  }
-}, [projects, searchParams]);
+    if (projectFromUrl && projects.length > 0) {
+      handleProjectChange(projectFromUrl);
+    }
+  }, [projects, searchParams]);
 
   async function fetchProjects() {
     const { data, error } = await supabase
@@ -153,7 +154,7 @@ useEffect(() => {
 
     if (!orientationData) {
       alert("Site orientation must be completed before signing in.");
-      window.location.href = "/orientation";
+      window.location.href = `/orientation?project=${projectId}`;
       return;
     }
 
@@ -163,24 +164,11 @@ useEffect(() => {
     if (workerRole === "supervisor") {
       if (!crewSize) return alert("Please enter crew size.");
       if (!workActivity) return alert("Please enter today's work activity.");
-
-      if (selectedHazards.length === 0) {
-        return alert("Please select at least one hazard.");
-      }
-
-      if (selectedHazards.includes("Other") && !otherHazardDetails) {
-        return alert("Please describe the other hazard.");
-      }
-
+      if (selectedHazards.length === 0) return alert("Please select at least one hazard.");
+      if (selectedHazards.includes("Other") && !otherHazardDetails) return alert("Please describe the other hazard.");
       if (!controls) return alert("Please enter controls in place.");
-
-      if (selectedPpe.includes("Other") && !otherPpeDetails) {
-        return alert("Please describe the other PPE required.");
-      }
-
-      if (!supervisorDhaAck) {
-        return alert("Please acknowledge the Daily Hazard Assessment.");
-      }
+      if (selectedPpe.includes("Other") && !otherPpeDetails) return alert("Please describe the other PPE required.");
+      if (!supervisorDhaAck) return alert("Please acknowledge the Daily Hazard Assessment.");
 
       const hazardsToSave = selectedHazards.includes("Other")
         ? [...selectedHazards, `Other: ${otherHazardDetails}`]
@@ -302,10 +290,7 @@ useEffect(() => {
 
       <section className="card">
         <label>Project</label>
-        <select
-          value={projectId}
-          onChange={(e) => handleProjectChange(e.target.value)}
-        >
+        <select value={projectId} onChange={(e) => handleProjectChange(e.target.value)}>
           <option value="">Select project</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
@@ -318,21 +303,11 @@ useEffect(() => {
       {selectedProjectData && (
         <section className="card">
           <h3>Site Contact Information</h3>
-          <p>
-            <strong>Contact:</strong>{" "}
-            {selectedProjectData.site_contact_name || "Not listed"}
-          </p>
-          <p>
-            <strong>Phone:</strong>{" "}
-            {selectedProjectData.site_contact_phone || "Not listed"}
-          </p>
-          <p>
-            <strong>Email:</strong>{" "}
-            {selectedProjectData.site_contact_email || "Not listed"}
-          </p>
+          <p><strong>Contact:</strong> {selectedProjectData.site_contact_name || "Not listed"}</p>
+          <p><strong>Phone:</strong> {selectedProjectData.site_contact_phone || "Not listed"}</p>
+          <p><strong>Email:</strong> {selectedProjectData.site_contact_email || "Not listed"}</p>
           <p style={{ marginTop: 20 }}>
-            In case of emergency, call 911 first and notify site supervision
-            immediately.
+            In case of emergency, call 911 first and notify site supervision immediately.
           </p>
         </section>
       )}
@@ -340,10 +315,7 @@ useEffect(() => {
       <section className="card">
         <div style={{ marginBottom: 12 }}>
           <label>Your Role</label>
-          <select
-            value={workerRole}
-            onChange={(e) => setWorkerRole(e.target.value)}
-          >
+          <select value={workerRole} onChange={(e) => setWorkerRole(e.target.value)}>
             <option value="worker">Worker / Labourer</option>
             <option value="supervisor">Supervisor / Foreman</option>
           </select>
@@ -351,18 +323,12 @@ useEffect(() => {
 
         <div style={{ marginBottom: 12 }}>
           <label>Name</label>
-          <input
-            value={workerName}
-            onChange={(e) => setWorkerName(e.target.value)}
-          />
+          <input value={workerName} onChange={(e) => setWorkerName(e.target.value)} />
         </div>
 
         <div style={{ marginBottom: 12 }}>
           <label>Company</label>
-          <input
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-          />
+          <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
         </div>
 
         <div style={{ marginBottom: 12 }}>
@@ -379,203 +345,16 @@ useEffect(() => {
           <input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
 
-        {workerRole === "worker" && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <label>Supervisor Daily Hazard Assessment</label>
-
-              {todayAssessments.length === 0 && (
-                <p>
-                  No supervisor Daily Hazard Assessment has been completed for
-                  this project today.
-                </p>
-              )}
-
-              {todayAssessments.length > 0 && (
-                <select
-                  value={selectedAssessmentId}
-                  onChange={(e) => setSelectedAssessmentId(e.target.value)}
-                >
-                  <option value="">Select supervisor assessment</option>
-
-                  {todayAssessments.map((assessment) => (
-                    <option key={assessment.id} value={assessment.id}>
-                      {assessment.supervisor_name} — {assessment.company_name} —{" "}
-                      {assessment.work_activity}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  fontWeight: "normal",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={acknowledged}
-                  onChange={(e) => setAcknowledged(e.target.checked)}
-                  style={{ width: 18, height: 18 }}
-                />
-                I confirm I participated in today&apos;s Daily Hazard Assessment
-                / Safety Discussion with my supervisor.
-              </label>
-            </div>
-          </>
-        )}
-      </section>
-
-      {workerRole === "supervisor" && (
-        <section className="card">
-          <h2>Daily Hazard Assessment</h2>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Crew Size</label>
-            <input
-              type="number"
-              value={crewSize}
-              onChange={(e) => setCrewSize(e.target.value)}
-            />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Today&apos;s Work Activity</label>
-            <textarea
-              value={workActivity}
-              onChange={(e) => setWorkActivity(e.target.value)}
-              placeholder="Describe the work your crew is performing today."
-            />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Hazards Identified</label>
-            {hazardOptions.map((hazard) => (
-              <label
-                key={hazard}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  fontWeight: "normal",
-                  marginBottom: 8,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedHazards.includes(hazard)}
-                  onChange={() =>
-                    toggleArrayValue(
-                      hazard,
-                      selectedHazards,
-                      setSelectedHazards
-                    )
-                  }
-                  style={{ width: 18, height: 18 }}
-                />
-                {hazard}
-              </label>
-            ))}
-
-            {selectedHazards.includes("Other") && (
-              <div style={{ marginTop: 12 }}>
-                <label>Other Hazard Details</label>
-                <textarea
-                  value={otherHazardDetails}
-                  onChange={(e) => setOtherHazardDetails(e.target.value)}
-                  placeholder="Describe the other hazard."
-                />
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Controls in Place</label>
-            <textarea
-              value={controls}
-              onChange={(e) => setControls(e.target.value)}
-              placeholder="Describe how hazards will be controlled."
-            />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Additional PPE Required</label>
-            <p>
-              Baseline site PPE includes hard hat, safety boots, and hi-vis.
-            </p>
-
-            {ppeOptions.map((ppe) => (
-              <label
-                key={ppe}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  fontWeight: "normal",
-                  marginBottom: 8,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedPpe.includes(ppe)}
-                  onChange={() =>
-                    toggleArrayValue(ppe, selectedPpe, setSelectedPpe)
-                  }
-                  style={{ width: 18, height: 18 }}
-                />
-                {ppe}
-              </label>
-            ))}
-
-            {selectedPpe.includes("Other") && (
-              <div style={{ marginTop: 12 }}>
-                <label>Other PPE Details</label>
-                <textarea
-                  value={otherPpeDetails}
-                  onChange={(e) => setOtherPpeDetails(e.target.value)}
-                  placeholder="Describe the other PPE required."
-                />
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label>Additional Notes</label>
-            <textarea
-              value={additionalNotes}
-              onChange={(e) => setAdditionalNotes(e.target.value)}
-            />
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontWeight: "normal",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={supervisorDhaAck}
-                onChange={(e) => setSupervisorDhaAck(e.target.checked)}
-                style={{ width: 18, height: 18 }}
-              />
-              I reviewed today&apos;s hazards and controls with my crew.
-            </label>
-          </div>
-        </section>
-      )}
-
-      <section className="card">
         <button onClick={submitSignIn}>Sign In</button>
       </section>
     </main>
+  );
+}
+
+export default function TradeSignInPage() {
+  return (
+    <Suspense fallback={<main style={{ padding: 24 }}>Loading sign-in...</main>}>
+      <TradeSignInPageContent />
+    </Suspense>
   );
 }
