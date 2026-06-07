@@ -344,7 +344,140 @@ function TradeSignInPageContent() {
           <label>Phone</label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
+{workerRole === "worker" && (
+  <>
+    <div style={{ marginBottom: 16 }}>
+      <label>Supervisor Daily Hazard Assessment</label>
 
+      {todayAssessments.length === 0 && (
+        <p>
+          No supervisor Daily Hazard Assessment has been completed for
+          this project today.
+        </p>
+      )}
+
+      {todayAssessments.length > 0 && (
+        <select
+          value={selectedAssessmentId}
+          onChange={(e) => setSelectedAssessmentId(e.target.value)}
+        >
+          <option value="">Select supervisor assessment</option>
+
+          {todayAssessments.map((assessment) => (
+            <option key={assessment.id} value={assessment.id}>
+              {assessment.supervisor_name} — {assessment.company_name} —{" "}
+              {assessment.work_activity}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+
+    <div style={{ marginBottom: 20 }}>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+          fontWeight: "normal",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={acknowledged}
+          onChange={(e) => setAcknowledged(e.target.checked)}
+          style={{ width: 18, height: 18, minWidth: 18 }}
+        />
+        I confirm I participated in today's Daily Hazard Assessment /
+        Safety Discussion with my supervisor.
+      </label>
+    </div>
+  </>
+)}
+
+{workerRole === "supervisor" && (
+  <section className="card">
+    <h2>Daily Hazard Assessment</h2>
+
+    <div style={{ marginBottom: 12 }}>
+      <label>Crew Size</label>
+      <input
+        type="number"
+        value={crewSize}
+        onChange={(e) => setCrewSize(e.target.value)}
+      />
+    </div>
+
+    <div style={{ marginBottom: 12 }}>
+      <label>Today's Work Activity</label>
+      <textarea
+        value={workActivity}
+        onChange={(e) => setWorkActivity(e.target.value)}
+      />
+    </div>
+
+    <div style={{ marginBottom: 12 }}>
+      <label>Hazards Identified</label>
+
+      {hazardOptions.map((hazard) => (
+        <label
+          key={hazard}
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "flex-start",
+            fontWeight: "normal",
+            marginBottom: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={selectedHazards.includes(hazard)}
+            onChange={() =>
+              toggleArrayValue(
+                hazard,
+                selectedHazards,
+                setSelectedHazards
+              )
+            }
+          />
+          {hazard}
+        </label>
+      ))}
+    </div>
+
+    <div style={{ marginBottom: 12 }}>
+      <label>Controls in Place</label>
+      <textarea
+        value={controls}
+        onChange={(e) => setControls(e.target.value)}
+      />
+    </div>
+
+    <div style={{ marginBottom: 12 }}>
+      <label>Additional Notes</label>
+      <textarea
+        value={additionalNotes}
+        onChange={(e) => setAdditionalNotes(e.target.value)}
+      />
+    </div>
+
+    <label
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={supervisorDhaAck}
+        onChange={(e) => setSupervisorDhaAck(e.target.checked)}
+      />
+      I reviewed today's hazards and controls with my crew.
+    </label>
+  </section>
+)}
         <button onClick={submitSignIn}>Sign In</button>
       </section>
     </main>
