@@ -1,10 +1,12 @@
 "use client";
 
+import QRCode from "qrcode";
 import { requireActiveStaff } from "../../lib/auth";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 export default function ProjectsPage() {
+  const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [editingProject, setEditingProject] = useState<any>(null);
@@ -21,6 +23,20 @@ export default function ProjectsPage() {
 
     loadData();
   }, []);
+
+async function generateQrCode(projectId: string) {
+  const url = `${window.location.origin}/sign-in?project=${projectId}`;
+
+  const qr = await QRCode.toDataURL(url, {
+    width: 300,
+    margin: 2,
+  });
+
+  setQrCodes((prev) => ({
+    ...prev,
+    [projectId]: qr,
+  }));
+}
 
   async function fetchProjects(staffProfile: any) {
     if (staffProfile.role === "admin") {
@@ -98,17 +114,7 @@ export default function ProjectsPage() {
           <strong>{profile.role}</strong>
         </p>
       )}
-{profile?.role === "admin" && (
-  <section className="card">
-    <h2>Admin Tools</h2>
 
-    <a href="/admin/project-staff">
-      <button>
-        Manage Project Staff Assignments
-      </button>
-    </a>
-  </section>
-)}
       {editingProject && profile?.role === "admin" && (
         <section className="card">
           <h2>Edit Project</h2>
@@ -250,18 +256,56 @@ export default function ProjectsPage() {
             {p.site_contact_name || "Not listed"}
           </p>
           <p>
-            <strong>Phone:</strong>{" "}
-            {p.site_contact_phone || "Not listed"}
+            <strong>Phone:</strong> {p.site_contact_phone || "Not listed"}
           </p>
           <p>
-            <strong>Email:</strong>{" "}
-            {p.site_contact_email || "Not listed"}
+            <strong>Email:</strong> {p.site_contact_email || "Not listed"}
           </p>
 
           {profile?.role === "admin" && (
-            <button onClick={() => setEditingProject(p)}>
-              Edit Project
-            </button>
+            <div style={{ marginTop: 16 }}>
+              <button onClick={() => setEditingProject(p)}>
+                Edit Project
+              </button>
+
+              <button
+                onClick={() => generateQrCode(p.id)}
+                style={{ marginLeft: 10 }}
+              >
+                Generate Site QR Code
+              </button>
+
+              {qrCodes[p.id] && (
+                <div style={{ marginTop: 16 }}>
+                  <h3>Site Access QR Code</h3>
+
+                  <p>
+                    Scan to access sign-in and orientation workflow for this
+                    project.
+                  </p>
+
+                  <img
+                    src={qrCodes[p.id]}
+                    alt="Project QR Code"
+                    style={{
+                      width: 220,
+                      height: 220,
+                      background: "white",
+                      padding: 12,
+                    }}
+                  />
+
+                  <p>
+                    <a
+                      href={qrCodes[p.id]}
+                      download={`${p.project_name}-site-qr.png`}
+                    >
+                      Download QR Code
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </section>
       ))}

@@ -1,8 +1,10 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
+const searchParams = useSearchParams();
 const hazardOptions = [
   "Fall hazards",
   "Mobile equipment",
@@ -59,8 +61,16 @@ export default function TradeSignInPage() {
   const [supervisorDhaAck, setSupervisorDhaAck] = useState(false);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+  fetchProjects();
+}, []);
+
+useEffect(() => {
+  const projectFromUrl = searchParams.get("project");
+
+  if (projectFromUrl && projects.length > 0) {
+    handleProjectChange(projectFromUrl);
+  }
+}, [projects, searchParams]);
 
   async function fetchProjects() {
     const { data, error } = await supabase

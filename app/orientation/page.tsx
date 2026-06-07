@@ -1,8 +1,10 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
+const searchParams = useSearchParams();
 export default function OrientationPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [projectId, setProjectId] = useState("");
@@ -16,9 +18,13 @@ export default function OrientationPage() {
   const [reporting, setReporting] = useState(false);
   const [dailySignIn, setDailySignIn] = useState(false);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+useEffect(() => {
+  const projectFromUrl = searchParams.get("project");
+
+  if (projectFromUrl && projects.length > 0) {
+    setProjectId(projectFromUrl);
+  }
+}, [projects, searchParams]);
 
   async function fetchProjects() {
     const { data } = await supabase
