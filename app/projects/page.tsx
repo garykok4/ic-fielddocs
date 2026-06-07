@@ -10,6 +10,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [editingProject, setEditingProject] = useState<any>(null);
+const [notificationPrefs, setNotificationPrefs] = useState<Record<string, any>>({});
 
   useEffect(() => {
     async function loadData() {
@@ -18,6 +19,7 @@ export default function ProjectsPage() {
       if (!staffProfile) return;
 
       setProfile(staffProfile);
+	fetchNotificationPrefs(staffProfile.id);
       fetchProjects(staffProfile);
     }
 
@@ -103,6 +105,66 @@ async function generateQrCode(projectId: string) {
       fetchProjects(profile);
     }
   }
+async function fetchNotificationPrefs(staffId: string) {
+  const { data, error } = await supabase
+    .from("project_notification_preferences")
+    .select("*")
+    .eq("staff_id", staffId);
+
+  if (error) {
+    console.error(error.message);
+    return;
+  }
+
+  const prefsByProject: Record<string, any> = {};
+
+  data?.forEach((pref: any) => {
+    prefsByProject[pref.project_id] = pref;
+  });
+
+  setNotificationPrefs(prefsByProject);
+}
+
+async function updateNotificationPref(
+  projectId: string,
+  field: "notify_orientations" | "notify_sign_ins",
+  value: boolean
+) {
+  if (!profile) return;
+
+  const existing = notificationPrefs[projectId];
+
+  const updatedPref = {
+    project_id: projectId,
+    staff_id: profile.id,
+    notify_orientations:
+      field === "notify_orientations"
+        ? value
+        : existing?.notify_orientations || false,
+    notify_sign_ins:
+      field === "notify_sign_ins"
+        ? value
+        : existing?.notify_sign_ins || false,
+  };
+
+  const { data, error } = await supabase
+    .from("project_notification_preferences")
+    .upsert(updatedPref, {
+      onConflict: "project_id,staff_id",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setNotificationPrefs((prev) => ({
+    ...prev,
+    [projectId]: data,
+  }));
+}
 
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
@@ -261,7 +323,70 @@ async function generateQrCode(projectId: string) {
           <p>
             <strong>Email:</strong> {p.site_contact_email || "Not listed"}
           </p>
+<div
+  style={{
+    marginTop: 16,
+    padding: 12,
+    border: "1px solid #ddd",
+    borderRadius: 6,
+    backgroundColor: "#fafafa",
+  }}
+>
+  <h3 style={{ marginTop: 0 }}>Email Notifications</h3>
 
+  <label
+    style={{
+      display: "grid",
+      gridTemplateColumns: "22px 1fr",
+      columnGap: 10,
+      alignItems: "start",
+      fontWeight: "normal",
+      marginBottom: 8,
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={
+        notificationPrefs[p.id]?.notify_orientations || false
+      }
+      onChange={(e) =>
+        updateNotificationPref(
+          p.id,
+          "notify_orientations",
+          e.target.checked
+        )
+      }
+      style={{ width: 18, height: 18, marginTop: 2 }}
+    />
+    <span>Email me when a site orientation is completed.</span>
+  </label>
+
+  <label
+    style={{
+      display: "grid",
+      gridTemplateColumns: "22px 1fr",
+      columnGap: 10,
+      alignItems: "start",
+      fontWeight: "normal",
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={
+        notificationPrefs[p.id]?.notify_sign_ins || false
+      }
+      onChange={(e) =>
+        updateNotificationPref(
+          p.id,
+          "notify_sign_ins",
+          e.target.checked
+        )
+      }
+      style={{ width: 18, height: 18, marginTop: 2 }}
+    />
+    <span>Email me when a worker or supervisor signs in.</span>
+  </label>
+</div>
           {profile?.role === "admin" && (
             <div style={{ marginTop: 16 }}>
               <button onClick={() => setEditingProject(p)}>
