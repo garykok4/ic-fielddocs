@@ -196,16 +196,23 @@ function TradeSignInPageContent() {
             assessment_date: new Date().toLocaleDateString("en-CA"),
           },
         ])
-        .select()
-        .single();
+        .select("id")
+	.maybeSingle();
 
       if (dhaError) {
-        alert(dhaError.message);
-        return;
-      }
+  alert(dhaError.message);
+  return;
+}
 
-      dailyHazardAssessmentId = dhaData.id;
-      supervisorNameToSave = workerName;
+if (!dhaData) {
+  alert(
+    "Daily Hazard Assessment was saved, but the record ID could not be returned. This is likely a Supabase RLS SELECT policy issue on daily_hazard_assessments."
+  );
+  return;
+}
+
+dailyHazardAssessmentId = dhaData.id;
+supervisorNameToSave = workerName;
     }
 
     if (workerRole === "worker") {
