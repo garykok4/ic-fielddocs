@@ -530,6 +530,7 @@ function TradeSignInPageContent() {
 
   <span>I reviewed today's hazards and controls with my crew.</span>
 </label>
+)}
         <button onClick={submitSignIn}>Sign In</button>
       </section>
     </main>
