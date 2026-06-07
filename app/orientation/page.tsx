@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
-const searchParams = useSearchParams();
-export default function OrientationPage() {
+function OrientationPageContent() {
+  const searchParams = useSearchParams();
+
   const [projects, setProjects] = useState<any[]>([]);
   const [projectId, setProjectId] = useState("");
   const [workerName, setWorkerName] = useState("");
@@ -18,13 +19,17 @@ export default function OrientationPage() {
   const [reporting, setReporting] = useState(false);
   const [dailySignIn, setDailySignIn] = useState(false);
 
-useEffect(() => {
-  const projectFromUrl = searchParams.get("project");
+  useEffect(() => {
+    fetchProjects();
+  }, []);
 
-  if (projectFromUrl && projects.length > 0) {
-    setProjectId(projectFromUrl);
-  }
-}, [projects, searchParams]);
+  useEffect(() => {
+    const projectFromUrl = searchParams.get("project");
+
+    if (projectFromUrl) {
+      setProjectId(projectFromUrl);
+    }
+  }, [searchParams]);
 
   async function fetchProjects() {
     const { data } = await supabase
@@ -46,44 +51,34 @@ useEffect(() => {
     if (!companyName) return alert("Please enter your company.");
     if (!phone) return alert("Please enter your phone number.");
 
-    if (
-      !siteRules ||
-      !ppe ||
-      !emergency ||
-      !reporting ||
-      !dailySignIn
-    ) {
+    if (!siteRules || !ppe || !emergency || !reporting || !dailySignIn) {
       return alert("Please acknowledge all orientation items.");
     }
 
     const cleanPhone = normalizePhone(phone);
 
-    const { error } = await supabase
-      .from("site_orientations")
-      .insert([
-        {
-          project_id: projectId,
-          worker_name: workerName,
-          company_name: companyName,
-          phone: cleanPhone,
-          acknowledged_site_rules: true,
-          acknowledged_ppe: true,
-          acknowledged_emergency: true,
-          acknowledged_reporting: true,
-          acknowledged_daily_sign_in: true,
-        },
-      ]);
+    const { error } = await supabase.from("site_orientations").insert([
+      {
+        project_id: projectId,
+        worker_name: workerName,
+        company_name: companyName,
+        phone: cleanPhone,
+        acknowledged_site_rules: true,
+        acknowledged_ppe: true,
+        acknowledged_emergency: true,
+        acknowledged_reporting: true,
+        acknowledged_daily_sign_in: true,
+      },
+    ]);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    alert(
-      "Orientation complete. You may now use the site sign-in page."
-    );
+    alert("Orientation complete. You may now use the site sign-in page.");
 
-    window.location.href = "/sign-in";
+    window.location.href = `/sign-in?project=${projectId}`;
   }
 
   return (
@@ -93,9 +88,7 @@ useEffect(() => {
 
         <h2>Site Orientation</h2>
 
-        <p>
-          Complete this orientation before signing in to the project site.
-        </p>
+        <p>Complete this orientation before signing in to the project site.</p>
       </section>
 
       <section className="card">
@@ -137,10 +130,7 @@ useEffect(() => {
         <div style={{ marginBottom: 12 }}>
           <label>Phone</label>
 
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
       </section>
 
@@ -243,10 +233,18 @@ useEffect(() => {
           I understand I must sign in each day before entering the work area.
         </label>
 
-        <button onClick={submitOrientation}>
-          Complete Orientation
-        </button>
+        <button onClick={submitOrientation}>Complete Orientation</button>
       </section>
     </main>
+  );
+}
+
+export default function OrientationPage() {
+  return (
+    <Suspense
+      fallback={<main style={{ padding: 24 }}>Loading orientation...</main>}
+    >
+      <OrientationPageContent />
+    </Suspense>
   );
 }
