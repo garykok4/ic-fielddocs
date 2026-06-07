@@ -18,6 +18,7 @@ function OrientationPageContent() {
   const [emergency, setEmergency] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [dailySignIn, setDailySignIn] = useState(false);
+  const [truthfulInfo, setTruthfulInfo] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -51,7 +52,14 @@ function OrientationPageContent() {
     if (!companyName) return alert("Please enter your company.");
     if (!phone) return alert("Please enter your phone number.");
 
-    if (!siteRules || !ppe || !emergency || !reporting || !dailySignIn) {
+    if (
+      !siteRules ||
+      !ppe ||
+      !emergency ||
+      !reporting ||
+      !dailySignIn ||
+      !truthfulInfo
+    ) {
       return alert("Please acknowledge all orientation items.");
     }
 
@@ -81,14 +89,44 @@ function OrientationPageContent() {
     window.location.href = `/sign-in?project=${projectId}`;
   }
 
+  const checkboxStyle = {
+    display: "grid",
+    gridTemplateColumns: "22px 1fr",
+    columnGap: 10,
+    alignItems: "start",
+    fontWeight: "normal",
+    lineHeight: 1.4,
+    marginBottom: 12,
+  };
+
+  const checkboxInputStyle = {
+    width: 18,
+    height: 18,
+    marginTop: 2,
+  };
+
+  const scrollBoxStyle = {
+    border: "1px solid #ccc",
+    borderRadius: 6,
+    padding: 12,
+    height: 180,
+    overflowY: "auto" as const,
+    backgroundColor: "#fafafa",
+    marginBottom: 12,
+  };
+
   return (
-    <main style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
+    <main style={{ padding: 24, maxWidth: 760, margin: "0 auto" }}>
       <section className="card">
         <h1>I/C Construction Inc.</h1>
 
         <h2>Site Orientation</h2>
 
-        <p>Complete this orientation before signing in to the project site.</p>
+        <p>
+          Complete this orientation before signing in to the project site. This
+          orientation is project-specific and must be completed before entering
+          the work area.
+        </p>
       </section>
 
       <section className="card">
@@ -135,102 +173,190 @@ function OrientationPageContent() {
       </section>
 
       <section className="card">
-        <h2>Orientation Acknowledgements</h2>
+        <h2>Site Rules & Safety Expectations</h2>
 
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontWeight: "normal",
-            marginBottom: 12,
-          }}
-        >
+        <div style={scrollBoxStyle}>
+          <p>
+            All workers, supervisors, subcontractors, suppliers, and visitors
+            must follow I/C Construction Inc. site rules and all applicable
+            health and safety requirements.
+          </p>
+
+          <ul style={{ paddingLeft: 20 }}>
+            <li>Complete site orientation before entering the work area.</li>
+            <li>Sign in daily before starting work.</li>
+            <li>
+              Wear CSA-approved hard hat, safety footwear, and high-visibility
+              clothing at all times unless otherwise directed by site
+              supervision.
+            </li>
+            <li>
+              Use additional PPE where required, including eye protection,
+              gloves, hearing protection, respiratory protection, fall
+              protection, or task-specific PPE.
+            </li>
+            <li>
+              Follow the Occupational Health and Safety Act, applicable
+              regulations, company policies, project rules, and supervisor
+              instructions.
+            </li>
+            <li>
+              Report hazards, unsafe conditions, incidents, injuries, property
+              damage, spills, and near misses immediately.
+            </li>
+            <li>
+              Maintain good housekeeping. Keep access routes, stairs, exits,
+              fire protection equipment, and electrical panels clear.
+            </li>
+            <li>
+              Only trained, competent, and authorized workers may operate tools,
+              vehicles, lifts, equipment, or machinery.
+            </li>
+            <li>
+              Do not remove or bypass guards, barricades, signage, locks,
+              tags, or other safety controls.
+            </li>
+            <li>
+              Drug or alcohol impairment is strictly prohibited on site.
+            </li>
+            <li>
+              Horseplay, fighting, harassment, violence, and unsafe behaviour
+              are not permitted.
+            </li>
+            <li>
+              Failure to follow site rules may result in removal from site.
+            </li>
+          </ul>
+        </div>
+
+        <label style={checkboxStyle}>
           <input
             type="checkbox"
             checked={siteRules}
             onChange={(e) => setSiteRules(e.target.checked)}
-            style={{ width: 18, height: 18 }}
+            style={checkboxInputStyle}
           />
 
-          I have reviewed the site rules and understand site expectations.
+          <span>
+            I have read, understood, and agree to comply with the Site Rules &
+            Safety Expectations listed above.
+          </span>
         </label>
+      </section>
 
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontWeight: "normal",
-            marginBottom: 12,
-          }}
-        >
+      <section className="card">
+        <h2>Required PPE</h2>
+
+        <div style={scrollBoxStyle}>
+          <p>
+            Minimum site PPE must be worn as required by the project and the
+            work being performed.
+          </p>
+
+          <ul style={{ paddingLeft: 20 }}>
+            <li>CSA-approved hard hat.</li>
+            <li>CSA-approved safety footwear.</li>
+            <li>High-visibility clothing.</li>
+            <li>Safety glasses or eye protection where required.</li>
+            <li>Gloves suitable for the task being performed.</li>
+            <li>Hearing protection where noise hazards are present.</li>
+            <li>Respiratory protection where dust, fumes, or vapours require it.</li>
+            <li>Fall protection where required by law, site rules, or task hazard.</li>
+            <li>Task-specific PPE required by the supervisor, employer, or site condition.</li>
+          </ul>
+        </div>
+
+        <label style={checkboxStyle}>
           <input
             type="checkbox"
             checked={ppe}
             onChange={(e) => setPpe(e.target.checked)}
-            style={{ width: 18, height: 18 }}
+            style={checkboxInputStyle}
           />
 
-          I understand the required PPE for this project.
+          <span>
+            I understand the required PPE for this project and agree to wear
+            the PPE required for my work.
+          </span>
         </label>
+      </section>
 
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontWeight: "normal",
-            marginBottom: 12,
-          }}
-        >
+      <section className="card">
+        <h2>Emergency Procedures</h2>
+
+        <div style={{ ...scrollBoxStyle, height: 150 }}>
+          <p>In the event of an emergency:</p>
+
+          <ol style={{ paddingLeft: 20 }}>
+            <li>Stop work immediately if safe to do so.</li>
+            <li>Call 911 where emergency response is required.</li>
+            <li>Notify site supervision as soon as possible.</li>
+            <li>Follow directions from site supervision and emergency responders.</li>
+            <li>Proceed to the designated muster point if evacuation is required.</li>
+            <li>Remain at the muster point until accounted for and released.</li>
+            <li>Do not re-enter the work area until authorized.</li>
+          </ol>
+        </div>
+
+        <label style={checkboxStyle}>
           <input
             type="checkbox"
             checked={emergency}
             onChange={(e) => setEmergency(e.target.checked)}
-            style={{ width: 18, height: 18 }}
+            style={checkboxInputStyle}
           />
 
-          I understand emergency procedures and site contact information.
+          <span>
+            I understand the emergency procedures and agree to follow site
+            emergency instructions.
+          </span>
         </label>
+      </section>
 
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontWeight: "normal",
-            marginBottom: 12,
-          }}
-        >
+      <section className="card">
+        <h2>Reporting & Daily Sign-In</h2>
+
+        <label style={checkboxStyle}>
           <input
             type="checkbox"
             checked={reporting}
             onChange={(e) => setReporting(e.target.checked)}
-            style={{ width: 18, height: 18 }}
+            style={checkboxInputStyle}
           />
 
-          I will report hazards, incidents, injuries, and near misses
-          immediately.
+          <span>
+            I will report hazards, incidents, injuries, property damage, spills,
+            and near misses immediately to site supervision.
+          </span>
         </label>
 
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontWeight: "normal",
-            marginBottom: 20,
-          }}
-        >
+        <label style={checkboxStyle}>
           <input
             type="checkbox"
             checked={dailySignIn}
             onChange={(e) => setDailySignIn(e.target.checked)}
-            style={{ width: 18, height: 18 }}
+            style={checkboxInputStyle}
           />
 
-          I understand I must sign in each day before entering the work area.
+          <span>
+            I understand I must sign in each day before entering the work area
+            and participate in the applicable Daily Hazard Assessment / Safety
+            Discussion before starting work.
+          </span>
+        </label>
+
+        <label style={checkboxStyle}>
+          <input
+            type="checkbox"
+            checked={truthfulInfo}
+            onChange={(e) => setTruthfulInfo(e.target.checked)}
+            style={checkboxInputStyle}
+          />
+
+          <span>
+            I certify that the information I provided is accurate and that I am
+            fit and able to perform my work safely today.
+          </span>
         </label>
 
         <button onClick={submitOrientation}>Complete Orientation</button>
