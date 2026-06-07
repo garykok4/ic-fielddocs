@@ -33,7 +33,11 @@ export default function RootLayout({
             <Link href="/projects">Projects</Link>
 
             <div
-              style={{ position: "relative" }}
+             style={{
+  position: "relative",
+  paddingBottom: 16,
+  marginBottom: -16,
+}}
               onMouseEnter={() => {
                 setReportsOpen(true);
                 setWorkforceOpen(false);
@@ -46,7 +50,8 @@ export default function RootLayout({
                 <div
                   style={{
                     position: "absolute",
-                    top: 40,
+                    top: "100%",
+marginTop: 0,
                     left: 0,
                     background: "white",
                     color: "#111",
@@ -89,7 +94,11 @@ export default function RootLayout({
             </div>
 
             <div
-              style={{ position: "relative" }}
+              style={{
+  position: "relative",
+  paddingBottom: 16,
+  marginBottom: -16,
+}}
               onMouseEnter={() => {
                 setWorkforceOpen(true);
                 setReportsOpen(false);
@@ -102,7 +111,8 @@ export default function RootLayout({
                 <div
                   style={{
                     position: "absolute",
-                    top: 40,
+                    top: "100%",
+marginTop: 0,
                     left: 0,
                     background: "white",
                     color: "#111",
