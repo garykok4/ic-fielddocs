@@ -85,11 +85,7 @@ function OrientationPageContent() {
 }
 
 const selectedProject = projects.find((p) => p.id === projectId);
-alert(
-  `Project: ${selectedProject?.project_name || "none"}\nEmail: ${
-    selectedProject?.notification_email || "none"
-  }`
-);
+
 if (selectedProject?.notification_email) {
   const emailResponse = await fetch("/api/send-notification", {
     method: "POST",
@@ -108,9 +104,6 @@ if (selectedProject?.notification_email) {
       `,
     }),
   });
-
-  const emailResult = await emailResponse.json();
-  alert(JSON.stringify(emailResult, null, 2));
 }
 
 alert("Orientation complete. You may now use the site sign-in page.");
