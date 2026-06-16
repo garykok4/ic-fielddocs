@@ -170,6 +170,28 @@ async function updateNotificationPref(
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <h1>Projects</h1>
+<button
+  onClick={async () => {
+    const response = await fetch("/api/send-notification", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: "gary@icconinc.ca",
+        subject: "FieldDocs Test Email",
+        html: "<h1>FieldDocs email notifications are working.</h1>",
+      }),
+    });
+
+    const result = await response.json();
+
+    console.log(result);
+    alert("Email test sent. Check your inbox.");
+  }}
+>
+  Send Test Email
+</button>
 
       {profile && (
         <p>
