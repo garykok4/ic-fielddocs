@@ -178,7 +178,7 @@ async function updateNotificationPref(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        to: "gary@icconinc.ca",
+        to: "garykok4@gmail.com",
         subject: "FieldDocs Test Email",
         html: "<h1>FieldDocs email notifications are working.</h1>",
       }),
