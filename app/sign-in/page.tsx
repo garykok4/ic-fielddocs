@@ -223,6 +223,49 @@ function TradeSignInPageContent() {
 
       dailyHazardAssessmentId = dhaData.id;
       supervisorNameToSave = workerName;
+if (selectedProjectData?.notification_email) {
+  try {
+    await fetch("/api/send-notification", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: selectedProjectData.notification_email,
+        subject: `New Daily Hazard Assessment - ${selectedProjectData.project_name}`,
+        html: `
+          <h2>New Daily Hazard Assessment Completed</h2>
+
+          <p><strong>Project:</strong> ${selectedProjectData.project_name}</p>
+          <p><strong>Supervisor:</strong> ${workerName}</p>
+          <p><strong>Company:</strong> ${companyName}</p>
+          <p><strong>Trade:</strong> ${trade || "Not listed"}</p>
+          <p><strong>Crew Size:</strong> ${crewSize}</p>
+          <p><strong>Work Activity:</strong> ${workActivity}</p>
+
+          <p><strong>Hazards:</strong></p>
+          <ul>
+            ${hazardsToSave.map((h) => `<li>${h}</li>`).join("")}
+          </ul>
+
+          <p><strong>Controls:</strong></p>
+          <p>${controls}</p>
+
+          <p><strong>Additional PPE:</strong></p>
+          <ul>
+            ${ppeToSave.map((item) => `<li>${item}</li>`).join("")}
+          </ul>
+
+          <p><strong>Additional Notes:</strong> ${
+            additionalNotes || "None"
+          }</p>
+        `,
+      }),
+    });
+  } catch (err) {
+    console.error("DHA notification email failed:", err);
+  }
+}
     }
 
     if (workerRole === "worker") {
