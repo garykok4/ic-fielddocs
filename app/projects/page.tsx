@@ -81,16 +81,17 @@ async function generateQrCode(projectId: string) {
 
     const { error } = await supabase
       .from("projects")
-      .update({
-        project_name: editingProject.project_name,
-        address: editingProject.address,
-        city: editingProject.city,
-        province: editingProject.province,
-        status: editingProject.status,
-        site_contact_name: editingProject.site_contact_name,
-        site_contact_phone: editingProject.site_contact_phone,
-        site_contact_email: editingProject.site_contact_email,
-      })
+     .update({
+  project_name: editingProject.project_name,
+  address: editingProject.address,
+  city: editingProject.city,
+  province: editingProject.province,
+  status: editingProject.status,
+  site_contact_name: editingProject.site_contact_name,
+  site_contact_phone: editingProject.site_contact_phone,
+  site_contact_email: editingProject.site_contact_email,
+  notification_email: editingProject.notification_email,
+})
       .eq("id", editingProject.id);
 
     if (error) {
@@ -292,6 +293,20 @@ async function updateNotificationPref(
               }
             />
           </div>
+<div style={{ marginBottom: 12 }}>
+  <label>Notification Email</label>
+
+  <input
+    value={editingProject.notification_email || ""}
+    onChange={(e) =>
+      setEditingProject({
+        ...editingProject,
+        notification_email: e.target.value,
+      })
+    }
+    placeholder="pm@company.com"
+  />
+</div>
 
           <div style={{ display: "flex", gap: 12 }}>
             <button onClick={saveProject}>Save Project</button>
