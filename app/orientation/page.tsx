@@ -85,7 +85,11 @@ function OrientationPageContent() {
 }
 
 const selectedProject = projects.find((p) => p.id === projectId);
-
+alert(
+  `Project: ${selectedProject?.project_name || "none"}\nEmail: ${
+    selectedProject?.notification_email || "none"
+  }`
+);
 if (selectedProject?.notification_email) {
   await fetch("/api/send-notification", {
     method: "POST",
