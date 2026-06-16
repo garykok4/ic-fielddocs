@@ -80,13 +80,35 @@ function OrientationPageContent() {
     ]);
 
     if (error) {
-      alert(error.message);
-      return;
-    }
+  alert(error.message);
+  return;
+}
 
-    alert("Orientation complete. You may now use the site sign-in page.");
+const selectedProject = projects.find((p) => p.id === projectId);
 
-    window.location.href = `/sign-in?project=${projectId}`;
+if (selectedProject?.notification_email) {
+  await fetch("/api/send-notification", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      to: selectedProject.notification_email,
+      subject: `New Site Orientation - ${selectedProject.project_name}`,
+      html: `
+        <h2>New Site Orientation Completed</h2>
+        <p><strong>Project:</strong> ${selectedProject.project_name}</p>
+        <p><strong>Worker:</strong> ${workerName}</p>
+        <p><strong>Company:</strong> ${companyName}</p>
+        <p><strong>Phone:</strong> ${cleanPhone}</p>
+      `,
+    }),
+  });
+}
+
+alert("Orientation complete. You may now use the site sign-in page.");
+
+window.location.href = `/sign-in?project=${projectId}`;
   }
 
   const checkboxStyle = {
