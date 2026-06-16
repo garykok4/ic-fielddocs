@@ -91,7 +91,7 @@ alert(
   }`
 );
 if (selectedProject?.notification_email) {
-  await fetch("/api/send-notification", {
+  const emailResponse = await fetch("/api/send-notification", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -108,6 +108,9 @@ if (selectedProject?.notification_email) {
       `,
     }),
   });
+
+  const emailResult = await emailResponse.json();
+  alert(JSON.stringify(emailResult, null, 2));
 }
 
 alert("Orientation complete. You may now use the site sign-in page.");
