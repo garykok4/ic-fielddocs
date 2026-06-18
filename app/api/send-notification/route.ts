@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     const { to, subject, html } = body;
 
     const result = await resend.emails.send({
-      from: "onboarding@resend.dev",
+      from: "onboarding@icconinc.ca",
       to,
       subject,
       html,
