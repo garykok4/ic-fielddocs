@@ -76,6 +76,11 @@ export default function ProjectsPage() {
   }
 
   async function saveProject() {
+    if (profile?.role !== "admin") {
+      alert("Only admins can edit projects.");
+      return;
+    }
+
     if (!editingProject) return;
 
     const { error } = await supabase
@@ -105,7 +110,10 @@ export default function ProjectsPage() {
   }
 
   async function deleteProject(projectId: string, projectName: string) {
-    if (profile?.role !== "admin") return;
+    if (profile?.role !== "admin") {
+      alert("Only admins can delete projects.");
+      return;
+    }
 
     const confirmed = window.confirm(
       `Are you sure you want to delete "${projectName}"? This cannot be undone.`
