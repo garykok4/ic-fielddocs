@@ -365,9 +365,7 @@ notify_visitors:
   >
     <input
       type="checkbox"
-      checked={
-        notificationPrefs[p.id]?.notify_orientations || false
-      }
+      checked={notificationPrefs[p.id]?.notify_orientations || false}
       onChange={(e) =>
         updateNotificationPref(
           p.id,
@@ -379,20 +377,31 @@ notify_visitors:
     />
     <span>Email me when a site orientation is completed.</span>
   </label>
-<label>
-  <input
-    type="checkbox"
-    checked={notificationPrefs[p.id]?.notify_visitors || false}
-    onChange={(e) =>
-      updateNotificationPref(
-        p.id,
-        "notify_visitors",
-        e.target.checked
-      )
-    }
-  />
-  Email me when a visitor signs in.
-</label>
+
+  <label
+    style={{
+      display: "grid",
+      gridTemplateColumns: "22px 1fr",
+      columnGap: 10,
+      alignItems: "start",
+      fontWeight: "normal",
+      marginBottom: 8,
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={notificationPrefs[p.id]?.notify_sign_ins || false}
+      onChange={(e) =>
+        updateNotificationPref(
+          p.id,
+          "notify_sign_ins",
+          e.target.checked
+        )
+      }
+      style={{ width: 18, height: 18, marginTop: 2 }}
+    />
+    <span>Email me when a worker or supervisor signs in.</span>
+  </label>
 
   <label
     style={{
@@ -405,19 +414,17 @@ notify_visitors:
   >
     <input
       type="checkbox"
-      checked={
-        notificationPrefs[p.id]?.notify_sign_ins || false
-      }
+      checked={notificationPrefs[p.id]?.notify_visitors || false}
       onChange={(e) =>
         updateNotificationPref(
           p.id,
-          "notify_sign_ins",
+          "notify_visitors",
           e.target.checked
         )
       }
       style={{ width: 18, height: 18, marginTop: 2 }}
     />
-    <span>Email me when a worker or supervisor signs in.</span>
+    <span>Email me when a visitor signs in.</span>
   </label>
 </div>
           {profile?.role === "admin" && (
