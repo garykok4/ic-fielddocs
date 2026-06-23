@@ -370,7 +370,46 @@ alert("You are signed in.");
         <h1>I/C Construction Inc.</h1>
         <h2>Site Sign-In</h2>
         <p>Please sign in before entering the work area.</p>
+<div
+  style={{
+    border: "1px solid #cbd5e1",
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 16,
+    backgroundColor: "#f8fafc",
+  }}
+>
+  <h3 style={{ marginTop: 0 }}>Visitors / Guests</h3>
 
+  <p>
+    Visitors, delivery drivers, inspectors, owner representatives, architects,
+    engineers, and other guests must check in with site supervision before
+    entering the work area.
+  </p>
+
+  <p>
+    This visitor sign-in is not for workers, subcontractors, or anyone
+    performing construction work on site.
+  </p>
+
+  <button
+    type="button"
+    onClick={() => {
+      window.location.href = projectId
+        ? `/visitor?project=${projectId}`
+        : "/visitor";
+    }}
+  >
+    Visitor Sign-In
+  </button>
+
+  {!projectId && (
+    <p style={{ fontSize: 14, marginBottom: 0 }}>
+      Tip: select your project below first so the visitor form opens for the
+      correct site.
+    </p>
+  )}
+</div>
         <div
           style={{
             backgroundColor: "#fff3cd",

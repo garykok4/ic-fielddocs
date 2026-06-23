@@ -128,7 +128,7 @@ async function fetchNotificationPrefs(staffId: string) {
 
 async function updateNotificationPref(
   projectId: string,
-  field: "notify_orientations" | "notify_sign_ins",
+  field: "notify_orientations" | "notify_sign_ins" | "notify_visitors",
   value: boolean
 ) {
   if (!profile) return;
@@ -146,6 +146,10 @@ async function updateNotificationPref(
       field === "notify_sign_ins"
         ? value
         : existing?.notify_sign_ins || false,
+notify_visitors:
+  field === "notify_visitors"
+    ? value
+    : existing?.notify_visitors || false,
   };
 
   const { data, error } = await supabase
@@ -375,6 +379,20 @@ async function updateNotificationPref(
     />
     <span>Email me when a site orientation is completed.</span>
   </label>
+<label>
+  <input
+    type="checkbox"
+    checked={notificationPrefs[p.id]?.notify_visitors || false}
+    onChange={(e) =>
+      updateNotificationPref(
+        p.id,
+        "notify_visitors",
+        e.target.checked
+      )
+    }
+  />
+  Email me when a visitor signs in.
+</label>
 
   <label
     style={{
