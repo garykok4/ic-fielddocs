@@ -226,33 +226,15 @@ function TradeSignInPageContent() {
     }
 
     if (workerRole === "worker") {
-      if (todayAssessments.length === 0) {
-        return alert(
-          "No Daily Hazard Assessment has been completed for this project today. Please speak with your supervisor/foreman."
-        );
-      }
+  if (!acknowledged) {
+    return alert(
+      "Please acknowledge that you understand the hazards associated with your work today."
+    );
+  }
 
-      if (!selectedAssessmentId) {
-        return alert("Please select your supervisor's Daily Hazard Assessment.");
-      }
-
-      const selectedAssessment = todayAssessments.find(
-        (item) => item.id === selectedAssessmentId
-      );
-
-      if (!selectedAssessment) {
-        return alert("Selected Daily Hazard Assessment was not found.");
-      }
-
-      if (!acknowledged) {
-        return alert(
-          "Please confirm you participated in today's Daily Hazard Assessment / Safety Discussion."
-        );
-      }
-
-      dailyHazardAssessmentId = selectedAssessment.id;
-      supervisorNameToSave = selectedAssessment.supervisor_name;
-    }
+  dailyHazardAssessmentId = null;
+  supervisorNameToSave = "";
+}
 
     const { error } = await supabase.from("trade_sign_ins").insert([
       {
@@ -525,32 +507,7 @@ alert("You are signed in.");
 
         {workerRole === "worker" && (
           <>
-            <div style={{ marginBottom: 16 }}>
-              <label>Supervisor Daily Hazard Assessment</label>
-
-              {todayAssessments.length === 0 && (
-                <p>
-                  No supervisor Daily Hazard Assessment has been completed for
-                  this project today.
-                </p>
-              )}
-
-              {todayAssessments.length > 0 && (
-                <select
-                  value={selectedAssessmentId}
-                  onChange={(e) => setSelectedAssessmentId(e.target.value)}
-                >
-                  <option value="">Select supervisor assessment</option>
-
-                  {todayAssessments.map((assessment) => (
-                    <option key={assessment.id} value={assessment.id}>
-                      {assessment.supervisor_name} — {assessment.company_name} —{" "}
-                      {assessment.work_activity}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+            
 
             <label style={{ ...checkboxStyle, marginBottom: 20 }}>
               <input
@@ -560,8 +517,8 @@ alert("You are signed in.");
                 style={checkboxInputStyle}
               />
               <span>
-                I confirm I participated in today's Daily Hazard Assessment /
-                Safety Discussion with my supervisor.
+                I understand the hazards associated with my work today and will
+  follow all site safety requirements.
               </span>
             </label>
           </>
@@ -674,7 +631,8 @@ alert("You are signed in.");
                 onChange={(e) => setSupervisorDhaAck(e.target.checked)}
                 style={checkboxInputStyle}
               />
-              <span>I reviewed today's hazards and controls with my crew.</span>
+              <span>I have conducted today's toolbox talk and reviewed the applicable
+  hazards, controls, and safe work procedures with my crew.</span>
             </label>
           </section>
         )}
