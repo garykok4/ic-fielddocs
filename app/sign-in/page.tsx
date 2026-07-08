@@ -45,7 +45,6 @@ function TradeSignInPageContent() {
   const [workerRole, setWorkerRole] = useState("worker");
   const [workerName, setWorkerName] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [trade, setTrade] = useState("");
   const [phone, setPhone] = useState("");
 
   const [selectedAssessmentId, setSelectedAssessmentId] = useState("");
@@ -114,6 +113,31 @@ function TradeSignInPageContent() {
     return value.replace(/\D/g, "");
   }
 
+  async function lookupWorkerByPhone(value: string) {
+  const cleanPhone = normalizePhone(value);
+
+  if (cleanPhone.length < 10) return;
+
+  const { data, error } = await supabase
+    .from("trade_sign_ins")
+    .select("worker_name, company_name, worker_role")
+    .eq("phone", cleanPhone)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error.message);
+    return;
+  }
+
+  if (!data) return;
+
+  if (!workerName) setWorkerName(data.worker_name || "");
+  if (!companyName) setCompanyName(data.company_name || "");
+  if (data.worker_role) setWorkerRole(data.worker_role);
+}
+
   function toggleArrayValue(
     value: string,
     list: string[],
@@ -147,7 +171,7 @@ function TradeSignInPageContent() {
   async function submitSignIn() {
     if (!projectId) return alert("Please select a project.");
     if (!workerName) return alert("Please enter your name.");
-    if (!companyName) return alert("Please enter your company.");
+    if (!companyName) return alert("Please enter your company or employer.");
     if (!phone) return alert("Please enter your phone number.");
 
     const cleanPhone = normalizePhone(phone);
@@ -198,7 +222,6 @@ function TradeSignInPageContent() {
             supervisor_name: workerName,
             supervisor_phone: cleanPhone,
             company_name: companyName,
-            trade,
             crew_size: Number(crewSize),
             work_activity: workActivity,
             hazards: hazardsToSave,
@@ -242,7 +265,6 @@ function TradeSignInPageContent() {
         worker_role: workerRole,
         worker_name: workerName,
         company_name: companyName,
-        trade,
         phone: cleanPhone,
         supervisor_name: supervisorNameToSave,
         daily_hazard_assessment_id: dailyHazardAssessmentId,
@@ -277,8 +299,7 @@ if (selectedProjectData?.notification_email) {
 
           <p><strong>Project:</strong> ${selectedProjectData.project_name}</p>
           <p><strong>Name:</strong> ${workerName}</p>
-          <p><strong>Company:</strong> ${companyName}</p>
-          <p><strong>Trade:</strong> ${trade || "Not listed"}</p>
+          <p><strong>Company / Employer:</strong> ${companyName}</p>
           <p><strong>Role:</strong> ${workerRole}</p>
           <p><strong>Phone:</strong> ${cleanPhone}</p>
           <p><strong>Supervisor:</strong> ${
@@ -311,7 +332,6 @@ alert("You are signed in.");
     setWorkerRole("worker");
     setWorkerName("");
     setCompanyName("");
-    setTrade("");
     setPhone("");
     setSelectedAssessmentId("");
     setAcknowledged(false);
@@ -484,25 +504,21 @@ alert("You are signed in.");
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label>Company</label>
+          <label>Company / Employer</label>
           <input
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
           />
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label>Trade</label>
-          <input
-            value={trade}
-            onChange={(e) => setTrade(e.target.value)}
-            placeholder="Electrical, mechanical, concrete, etc."
-          />
-        </div>
-
         <div style={{ marginBottom: 16 }}>
           <label>Phone</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input
+  value={phone}
+  onChange={(e) => setPhone(e.target.value)}
+  onBlur={(e) => lookupWorkerByPhone(e.target.value)}
+  placeholder="Enter phone number"
+/>
         </div>
 
         {workerRole === "worker" && (
