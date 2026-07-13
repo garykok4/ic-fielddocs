@@ -59,6 +59,7 @@ function TradeSignInPageContent() {
   const [otherPpeDetails, setOtherPpeDetails] = useState("");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [supervisorDhaAck, setSupervisorDhaAck] = useState(false);
+const [completeDha, setCompleteDha] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -115,6 +116,7 @@ function TradeSignInPageContent() {
 
   async function lookupWorkerByPhone(value: string) {
   const cleanPhone = normalizePhone(value);
+
 
   if (cleanPhone.length < 10) return;
 
@@ -197,56 +199,79 @@ function TradeSignInPageContent() {
     let dailyHazardAssessmentId = null;
     let supervisorNameToSave = "";
 
-    if (workerRole === "supervisor") {
-      if (!crewSize) return alert("Please enter crew size.");
-      if (!workActivity) return alert("Please enter today's work activity.");
-      if (selectedHazards.length === 0) return alert("Please select at least one hazard.");
-      if (selectedHazards.includes("Other") && !otherHazardDetails) return alert("Please describe the other hazard.");
-      if (!controls) return alert("Please enter controls in place.");
-      if (selectedPpe.includes("Other") && !otherPpeDetails) return alert("Please describe the other PPE required.");
-      if (!supervisorDhaAck) return alert("Please acknowledge the Daily Hazard Assessment.");
+if (workerRole === "supervisor") {
+  supervisorNameToSave = workerName;
 
-      const hazardsToSave = selectedHazards.includes("Other")
-        ? [...selectedHazards, `Other: ${otherHazardDetails}`]
-        : selectedHazards;
-
-      const ppeToSave = selectedPpe.includes("Other")
-        ? [...selectedPpe, `Other: ${otherPpeDetails}`]
-        : selectedPpe;
-
-      const { data: dhaData, error: dhaError } = await supabase
-        .from("daily_hazard_assessments")
-        .insert([
-          {
-            project_id: projectId,
-            supervisor_name: workerName,
-            supervisor_phone: cleanPhone,
-            company_name: companyName,
-            crew_size: Number(crewSize),
-            work_activity: workActivity,
-            hazards: hazardsToSave,
-            controls,
-            ppe_required: ppeToSave,
-            additional_notes: additionalNotes,
-            assessment_date: getTodayDate(),
-          },
-        ])
-        .select("id")
-        .maybeSingle();
-
-      if (dhaError) {
-        alert(dhaError.message);
-        return;
-      }
-
-      if (!dhaData) {
-        alert("Daily Hazard Assessment was saved, but the record ID could not be returned.");
-        return;
-      }
-
-      dailyHazardAssessmentId = dhaData.id;
-      supervisorNameToSave = workerName;
+  if (completeDha) {
+    if (!crewSize) return alert("Please enter crew size.");
+    if (!workActivity) {
+      return alert("Please enter today's work activity.");
     }
+    if (selectedHazards.length === 0) {
+      return alert("Please select at least one hazard.");
+    }
+    if (
+      selectedHazards.includes("Other") &&
+      !otherHazardDetails.trim()
+    ) {
+      return alert("Please describe the other hazard.");
+    }
+    if (!controls.trim()) {
+      return alert("Please enter controls in place.");
+    }
+    if (
+      selectedPpe.includes("Other") &&
+      !otherPpeDetails.trim()
+    ) {
+      return alert("Please describe the other PPE required.");
+    }
+    if (!supervisorDhaAck) {
+      return alert("Please acknowledge the Daily Hazard Assessment.");
+    }
+
+    const hazardsToSave = selectedHazards.includes("Other")
+      ? [...selectedHazards, `Other: ${otherHazardDetails.trim()}`]
+      : selectedHazards;
+
+    const ppeToSave = selectedPpe.includes("Other")
+      ? [...selectedPpe, `Other: ${otherPpeDetails.trim()}`]
+      : selectedPpe;
+
+    const { data: dhaData, error: dhaError } = await supabase
+      .from("daily_hazard_assessments")
+      .insert([
+        {
+          project_id: projectId,
+          supervisor_name: workerName,
+          supervisor_phone: cleanPhone,
+          company_name: companyName,
+          crew_size: Number(crewSize),
+          work_activity: workActivity.trim(),
+          hazards: hazardsToSave,
+          controls: controls.trim(),
+          ppe_required: ppeToSave,
+          additional_notes: additionalNotes.trim() || null,
+          assessment_date: getTodayDate(),
+        },
+      ])
+      .select("id")
+      .maybeSingle();
+
+    if (dhaError) {
+      alert(dhaError.message);
+      return;
+    }
+
+    if (!dhaData) {
+      alert(
+        "Daily Hazard Assessment was saved, but the record ID could not be returned."
+      );
+      return;
+    }
+
+    dailyHazardAssessmentId = dhaData.id;
+  }
+}
 
     if (workerRole === "worker") {
   if (!acknowledged) {
@@ -287,14 +312,18 @@ if (selectedProjectData?.notification_email) {
       body: JSON.stringify({
         to: selectedProjectData.notification_email,
         subject:
-          workerRole === "supervisor"
-            ? `New Supervisor Sign-In / DHA - ${selectedProjectData.project_name}`
-            : `New Site Sign-In - ${selectedProjectData.project_name}`,
+  workerRole === "supervisor"
+    ? dailyHazardAssessmentId
+      ? `New Supervisor Sign-In / DHA - ${selectedProjectData.project_name}`
+      : `New Supervisor Sign-In - ${selectedProjectData.project_name}`
+    : `New Site Sign-In - ${selectedProjectData.project_name}`,
         html: `
           <h2>${
             workerRole === "supervisor"
-              ? "New Supervisor Sign-In / Daily Hazard Assessment"
-              : "New Site Sign-In"
+  ? dailyHazardAssessmentId
+    ? "New Supervisor Sign-In / Daily Hazard Assessment"
+    : "New Supervisor Sign-In"
+  : "New Site Sign-In"
           }</h2>
 
           <p><strong>Project:</strong> ${selectedProjectData.project_name}</p>
@@ -307,7 +336,7 @@ if (selectedProjectData?.notification_email) {
           }</p>
 
           ${
-            workerRole === "supervisor"
+            dailyHazardAssessmentId
               ? `
                 <hr />
                 <p><strong>Crew Size:</strong> ${crewSize}</p>
@@ -344,6 +373,7 @@ alert("You are signed in.");
     setOtherPpeDetails("");
     setAdditionalNotes("");
     setSupervisorDhaAck(false);
+    setCompleteDha(false);
 
     if (projectId) {
       fetchTodayAssessments(projectId);
@@ -515,9 +545,15 @@ alert("You are signed in.");
           <label>Phone</label>
           <input
   value={phone}
-  onChange={(e) => setPhone(e.target.value)}
-  onBlur={(e) => lookupWorkerByPhone(e.target.value)}
-  placeholder="Enter phone number"
+  onChange={async (e) => {
+    const value = e.target.value;
+    setPhone(value);
+
+    if (normalizePhone(value).length >= 10) {
+      await lookupWorkerByPhone(value);
+    }
+  }}
+  placeholder="Phone Number"
 />
         </div>
 
@@ -541,8 +577,44 @@ alert("You are signed in.");
         )}
 
         {workerRole === "supervisor" && (
-          <section className="card">
-            <h2>Daily Hazard Assessment</h2>
+  <>
+    <div
+      style={{
+        border: "1px solid #cbd5e1",
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 16,
+        backgroundColor: "#f8fafc",
+      }}
+    >
+      <label style={{ ...checkboxStyle, marginBottom: 0 }}>
+        <input
+          type="checkbox"
+          checked={completeDha}
+          onChange={(e) => setCompleteDha(e.target.checked)}
+          style={checkboxInputStyle}
+        />
+        <span>
+          Complete an optional Daily Hazard Assessment
+        </span>
+      </label>
+
+      <p
+        style={{
+          fontSize: 14,
+          color: "#475569",
+          marginTop: 10,
+          marginBottom: 0,
+        }}
+      >
+        Complete this when requested by I/C Construction or when the
+        day’s work requires a documented hazard review.
+      </p>
+    </div>
+
+    {completeDha && (
+      <section className="card">
+        <h2>Daily Hazard Assessment</h2>
 
             <div style={{ marginBottom: 12 }}>
               <label>Crew Size</label>
@@ -650,10 +722,12 @@ alert("You are signed in.");
               <span>I have conducted today's toolbox talk and reviewed the applicable
   hazards, controls, and safe work procedures with my crew.</span>
             </label>
-          </section>
-        )}
+              </section>
+    )}
+  </>
+)}
 
-        <button onClick={submitSignIn}>Sign In</button>
+<button onClick={submitSignIn}>Sign In</button>
       </section>
     </main>
   );
