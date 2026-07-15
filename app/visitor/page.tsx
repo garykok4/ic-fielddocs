@@ -81,33 +81,14 @@ function VisitorPageContent() {
     }
 
    try {
-  const { data: notificationUsers, error: notificationError } = await supabase
-    .from("project_notification_preferences")
-    .select(`
-      staff_profiles (
-        email
-      )
-    `)
-    .eq("project_id", projectId)
-    .eq("notify_visitors", true);
-
-  if (notificationError) {
-    console.error("Visitor notification lookup failed:", notificationError.message);
-  }
-
-  const emails =
-    notificationUsers
-      ?.map((item: any) => item.staff_profiles?.email)
-      .filter(Boolean) || [];
-
-  if (emails.length > 0 && selectedProject) {
-    await fetch("/api/send-notification", {
+  if (selectedProject?.notification_email) {
+    const emailResponse = await fetch("/api/send-notification", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        to: emails,
+        to: selectedProject.notification_email,
         subject: `New Visitor Sign-In - ${selectedProject.project_name}`,
         html: `
           <h2>New Visitor Sign-In</h2>
@@ -116,10 +97,19 @@ function VisitorPageContent() {
           <p><strong>Company:</strong> ${companyName || "Not listed"}</p>
           <p><strong>Phone:</strong> ${cleanPhone || "Not listed"}</p>
           <p><strong>Reason for Visit:</strong> ${reasonForVisit}</p>
-          <p><strong>Person Meeting:</strong> ${personMeeting || "Not listed"}</p>
+          <p><strong>Person Meeting:</strong> ${
+            personMeeting || "Not listed"
+          }</p>
         `,
       }),
     });
+
+    if (!emailResponse.ok) {
+      const emailError = await emailResponse.text();
+      console.error("Visitor notification failed:", emailError);
+    }
+  } else {
+    console.warn("No notification email is configured for this project.");
   }
 } catch (err) {
   console.error("Visitor notification email failed:", err);
