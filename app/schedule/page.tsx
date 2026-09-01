@@ -1,164 +1,37 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { requireActiveStaff } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 
-type Task = {
-  id: string; project_id: string; name: string; trade: string | null;
-  start_date: string; duration_work_days: number; progress: number;
-  status: "not_started" | "in_progress" | "complete" | "on_hold";
-  is_milestone: boolean; sort_order: number; notes: string | null;
-};
-type Dependency = { id: string; predecessor_id: string; successor_id: string; lag_work_days: number };
-type Calculated = Task & { calculatedStart: Date; calculatedFinish: Date; critical: boolean };
+type Status="not_started"|"in_progress"|"complete"|"on_hold"; type View="gantt"|"calendar"|"list";
+type Task={id:string;project_id:string;name:string;trade:string|null;start_date:string;duration_work_days:number;progress:number;status:Status;is_milestone:boolean;sort_order:number;notes:string|null};
+type Dep={id:string;predecessor_id:string;successor_id:string;lag_work_days:number}; type CT=Task&{start:Date;finish:Date;critical:boolean};
+const DAY=86400000,CELL=34,labels:Record<Status,string>={not_started:"Not started",in_progress:"In progress",complete:"Complete",on_hold:"On hold"};
+const iso=(d:Date)=>d.toISOString().slice(0,10),dt=(s:string)=>new Date(`${s}T12:00:00`),work=(d:Date)=>d.getDay()!=0&&d.getDay()!=6;
+function addDay(d:Date,n:number){const x=new Date(d);x.setDate(x.getDate()+n);return x} function addWork(d:Date,n:number){const x=new Date(d);let i=0;while(i<n){x.setDate(x.getDate()+1);if(work(x))i++}while(!work(x))x.setDate(x.getDate()+1);return x}
+const end=(s:Date,n:number)=>n<=1?new Date(s):addWork(s,n-1),days=(a:Date,b:Date)=>Math.round((+b-+a)/DAY),same=(a:Date,b:Date)=>iso(a)==iso(b);
+function calculate(tasks:Task[],deps:Dep[]):CT[]{const by=new Map(tasks.map(t=>[t.id,t])),out=new Map<string,CT>(),vis=new Set<string>();const visit=(t:Task):CT=>{if(out.has(t.id))return out.get(t.id)!;if(vis.has(t.id)){const s=dt(t.start_date);return{...t,start:s,finish:end(s,t.duration_work_days),critical:false}}vis.add(t.id);let s=dt(t.start_date);deps.filter(d=>d.successor_id==t.id).forEach(d=>{const p=by.get(d.predecessor_id);if(p){const candidate=addWork(visit(p).finish,1+Math.max(0,d.lag_work_days));if(candidate>s)s=candidate}});vis.delete(t.id);const c={...t,start:s,finish:end(s,t.duration_work_days),critical:false};out.set(t.id,c);return c};tasks.forEach(visit);const a=[...out.values()];if(!a.length)return a;const last=Math.max(...a.map(t=>+t.finish)),crit=new Set(a.filter(t=>+t.finish==last).map(t=>t.id));let changed=true;while(changed){changed=false;deps.forEach(d=>{const p=out.get(d.predecessor_id),s=out.get(d.successor_id);if(crit.has(d.successor_id)&&p&&s&&same(addWork(p.finish,1+Math.max(0,d.lag_work_days)),s.start)&&!crit.has(p.id)){crit.add(p.id);changed=true}})}return a.map(t=>({...t,critical:crit.has(t.id)})).sort((a,b)=>a.sort_order-b.sort_order||+a.start-+b.start)}
+const colour=(t:CT)=>t.status==="complete"?"#16a34a":t.status==="on_hold"?"#64748b":t.critical?"#dc2626":"#2563eb";
+const blank=(project_id:string):Partial<Task>=>({project_id,name:"",trade:"",start_date:iso(new Date()),duration_work_days:1,progress:0,status:"not_started",is_milestone:false,notes:""});
 
-const DAY = 86400000;
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-const parseDate = (s: string) => new Date(`${s}T12:00:00`);
-const isWorkday = (d: Date) => d.getDay() !== 0 && d.getDay() !== 6;
-function nextWorkday(date: Date, amount = 1) {
-  const d = new Date(date); let moved = 0;
-  while (moved < amount) { d.setDate(d.getDate() + 1); if (isWorkday(d)) moved++; }
-  while (!isWorkday(d)) d.setDate(d.getDate() + 1);
-  return d;
-}
-function finishDate(start: Date, duration: number) {
-  if (duration <= 1) return new Date(start);
-  return nextWorkday(start, duration - 1);
-}
-function workdayDistance(a: Date, b: Date) {
-  let count = 0; const d = new Date(a);
-  while (d < b) { d.setDate(d.getDate() + 1); if (isWorkday(d)) count++; }
-  return count;
-}
+export default function SchedulePage(){
+ const [profile,setProfile]=useState<any>(),[projects,setProjects]=useState<any[]>([]),[projectId,setProjectId]=useState(""),[tasks,setTasks]=useState<Task[]>([]),[deps,setDeps]=useState<Dep[]>([]),[view,setView]=useState<View>("gantt"),[editing,setEditing]=useState<Partial<Task>|null>(null),[month,setMonth]=useState(new Date()),[filter,setFilter]=useState(""),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
+ useEffect(()=>{(async()=>{const p=await requireActiveStaff();if(!p)return;setProfile(p);let rows:any[]=[];if(p.role==="admin"){const r=await supabase.from("projects").select("*").order("project_name");if(r.error)return alert(r.error.message);rows=r.data||[]}else{const r=await supabase.from("project_staff").select("projects(*)").eq("staff_id",p.id);if(r.error)return alert(r.error.message);rows=r.data?.map((x:any)=>x.projects).filter(Boolean)||[]}setProjects(rows);if(rows[0])setProjectId(rows[0].id);setLoading(false)})()},[]);
+ async function load(id=projectId){if(!id)return;const[t,d]=await Promise.all([supabase.from("schedule_tasks").select("*").eq("project_id",id).order("sort_order"),supabase.from("schedule_dependencies").select("*").eq("project_id",id)]);if(t.error||d.error)return alert(t.error?.message||d.error?.message);setTasks(t.data||[]);setDeps(d.data||[])} useEffect(()=>{load(projectId);setEditing(null)},[projectId]);
+ const calc=useMemo(()=>calculate(tasks,deps),[tasks,deps]),shown=useMemo(()=>calc.filter(t=>!filter||`${t.name} ${t.trade||""}`.toLowerCase().includes(filter.toLowerCase())),[calc,filter]);
+ const range=useMemo(()=>{const now=new Date(),min=shown.length?Math.min(...shown.map(t=>+t.start),+now):+addDay(now,-7),max=shown.length?Math.max(...shown.map(t=>+t.finish),+addDay(now,28)):+addDay(now,35),start=addDay(new Date(min),-3);return{start,count:days(start,new Date(max))+5}},[shown]); const timeline=useMemo(()=>Array.from({length:range.count},(_,i)=>addDay(range.start,i)),[range]);
+ async function save(){if(!editing?.name?.trim())return alert("Enter an activity name.");setSaving(true);const payload={project_id:projectId,name:editing.name.trim(),trade:editing.trade||null,start_date:editing.start_date,duration_work_days:editing.is_milestone?0:Number(editing.duration_work_days||1),progress:Number(editing.progress||0),status:editing.status,is_milestone:!!editing.is_milestone,notes:editing.notes||null,sort_order:editing.sort_order??tasks.length,created_by:profile?.id};const r=editing.id?await supabase.from("schedule_tasks").update(payload).eq("id",editing.id):await supabase.from("schedule_tasks").insert(payload);setSaving(false);if(r.error)return alert(r.error.message);setEditing(null);load()}
+ async function move(id:string,d:Date){if(deps.some(x=>x.successor_id==id)&&!confirm("This activity has a predecessor. Its dependency may move it later than this date. Continue?"))return;const r=await supabase.from("schedule_tasks").update({start_date:iso(d)}).eq("id",id);if(r.error)return alert(r.error.message);load()} function drag(e:any,id:string){e.dataTransfer.setData("task",id)} function drop(e:any,d:Date){e.preventDefault();const id=e.dataTransfer.getData("task");if(id)move(id,d)}
+ async function remove(id:string){if(!confirm("Delete this activity and its links?"))return;const r=await supabase.from("schedule_tasks").delete().eq("id",id);if(r.error)return alert(r.error.message);setEditing(null);load()}
+ async function setPredecessor(successor:string,predecessor:string){const existing=deps.filter(d=>d.successor_id==successor);if(existing.length){const r=await supabase.from("schedule_dependencies").delete().in("id",existing.map(d=>d.id));if(r.error)return alert(r.error.message)}if(predecessor){const r=await supabase.from("schedule_dependencies").insert({project_id:projectId,predecessor_id:predecessor,successor_id:successor,lag_work_days:0});if(r.error)return alert(r.error.message)}load()}
+ if(loading)return <main className="shell">Loading schedule…</main>;const first=new Date(month.getFullYear(),month.getMonth(),1,12),gridStart=addDay(first,-first.getDay()),monthDays=Array.from({length:42},(_,i)=>addDay(gridStart,i));
+ return <main className="shell"><style>{css}</style>
+  <header><div><h1>Project Schedule</h1><p>Live Monday–Friday schedule</p></div><div className="project"><label>Project<select value={projectId} onChange={e=>setProjectId(e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.project_name}</option>)}</select></label><button className="primary" onClick={()=>setEditing(blank(projectId))}>+ Add activity</button></div></header>
+  <nav><div className="tabs">{(["gantt","calendar","list"] as View[]).map(v=><button className={view==v?"active":""} onClick={()=>setView(v)} key={v}>{v[0].toUpperCase()+v.slice(1)}</button>)}</div><input placeholder="Filter activities or trades…" value={filter} onChange={e=>setFilter(e.target.value)}/><div className="legend"><span>■ Normal</span><span>■ <b>Critical</b></span><span>■ Complete</span></div></nav>
+  {view==="gantt"&&<section className="gantt"><div className="ggrid" style={{gridTemplateColumns:`360px ${timeline.length*CELL}px`}}><div className="title fixed">Activity</div><div className="dates">{timeline.map((d,i)=><div key={i} className={`${!work(d)?"weekend":""} ${same(d,new Date())?"today":""}`}><b>{d.toLocaleDateString("en-CA",{weekday:"short"}).slice(0,1)}</b><span>{d.getDate()}</span></div>)}</div>{shown.map((t,i)=><div className="contents" key={t.id}><div className="task fixed" onClick={()=>setEditing(t)}><div><strong>{i+1}. {t.name}</strong><small>{t.trade||"Unassigned"} · {t.duration_work_days} days</small></div><span className={`status ${t.status}`}>{labels[t.status]}</span></div><div className="track">{timeline.map((d,j)=><div key={j} className={`${!work(d)?"weekend":""} ${same(d,new Date())?"today":""}`} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,d)}/>) }<div draggable onDragStart={e=>drag(e,t.id)} onClick={()=>setEditing(t)} className={`bar ${t.is_milestone?"mile":""}`} style={{left:days(range.start,t.start)*CELL+(t.is_milestone?9:2),width:t.is_milestone?16:Math.max(30,(days(t.start,t.finish)+1)*CELL-4),background:colour(t)}}><i style={{width:`${t.progress}%`}}/></div></div></div>)}</div>{!shown.length&&<div className="empty">Add the first activity to begin.</div>}</section>}
+  {view==="calendar"&&<section className="calendar"><div className="calnav"><button onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}>‹</button><h2>{month.toLocaleDateString("en-CA",{month:"long",year:"numeric"})}</h2><button onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}>›</button><button onClick={()=>setMonth(new Date())}>Today</button></div><div className="week">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(x=><b key={x}>{x}</b>)}</div><div className="month">{monthDays.map((d,i)=><div key={i} className={`day ${d.getMonth()!=month.getMonth()?"muted":""} ${same(d,new Date())?"cal-today":""}`} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,d)}><b>{d.getDate()}</b>{shown.filter(t=>d>=t.start&&d<=t.finish).map(t=><div draggable onDragStart={e=>drag(e,t.id)} onClick={()=>setEditing(t)} key={t.id} className="event" style={{background:colour(t)}}>{t.is_milestone?"◆ ":""}{t.name}</div>)}</div>)}</div></section>}
+  {view==="list"&&<section className="list"><table><thead><tr><th>#</th><th>Activity</th><th>Trade</th><th>Start</th><th>Finish</th><th>Days</th><th>Status</th><th>Progress</th></tr></thead><tbody>{shown.map((t,i)=><tr onClick={()=>setEditing(t)} key={t.id}><td>{i+1}</td><td><strong>{t.name}</strong>{t.critical&&<em> Critical</em>}</td><td>{t.trade||"—"}</td><td>{iso(t.start)}</td><td>{iso(t.finish)}</td><td>{t.duration_work_days}</td><td><span className={`status ${t.status}`}>{labels[t.status]}</span></td><td>{t.progress}%</td></tr>)}</tbody></table></section>}
+  {editing&&<div className="scrim" onMouseDown={e=>e.target===e.currentTarget&&setEditing(null)}><aside><div className="drawerhead"><div><h2>{editing.id?"Edit activity":"New activity"}</h2><p>Changes sync across every view.</p></div><button onClick={()=>setEditing(null)}>×</button></div><div className="form"><label>Activity name<input autoFocus value={editing.name||""} onChange={e=>setEditing({...editing,name:e.target.value})}/></label><label>Trade / Responsible<input value={editing.trade||""} onChange={e=>setEditing({...editing,trade:e.target.value})}/></label><div className="two"><label>Earliest start<input type="date" value={editing.start_date||""} onChange={e=>setEditing({...editing,start_date:e.target.value})}/></label><label>Work days<input type="number" min="1" disabled={editing.is_milestone} value={editing.is_milestone?0:editing.duration_work_days||1} onChange={e=>setEditing({...editing,duration_work_days:+e.target.value})}/></label></div>{editing.id&&<label>Predecessor<select value={deps.find(d=>d.successor_id==editing.id)?.predecessor_id||""} onChange={e=>setPredecessor(editing.id!,e.target.value)}><option value="">No predecessor</option>{tasks.filter(t=>t.id!=editing.id).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>}<div className="two"><label>Status<select value={editing.status} onChange={e=>setEditing({...editing,status:e.target.value as Status})}>{Object.entries(labels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Progress %<input type="number" min="0" max="100" value={editing.progress||0} onChange={e=>setEditing({...editing,progress:+e.target.value})}/></label></div><label className="check"><input type="checkbox" checked={!!editing.is_milestone} onChange={e=>setEditing({...editing,is_milestone:e.target.checked})}/> Milestone</label><label>Notes<textarea rows={5} value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></label></div><div className="actions">{editing.id&&<button className="danger" onClick={()=>remove(editing.id!)}>Delete</button>}<i/><button onClick={()=>setEditing(null)}>Cancel</button><button className="primary" disabled={saving} onClick={save}>{saving?"Saving…":"Save activity"}</button></div></aside></div>}
+ </main>}
 
-function calculate(tasks: Task[], deps: Dependency[]): Calculated[] {
-  const result = new Map<string, Calculated>();
-  const visiting = new Set<string>();
-  const byId = new Map(tasks.map(t => [t.id, t]));
-  function visit(task: Task): Calculated {
-    if (result.has(task.id)) return result.get(task.id)!;
-    if (visiting.has(task.id)) {
-      const start = parseDate(task.start_date);
-      return { ...task, calculatedStart: start, calculatedFinish: finishDate(start, task.duration_work_days), critical: false };
-    }
-    visiting.add(task.id);
-    let start = parseDate(task.start_date);
-    deps.filter(d => d.successor_id === task.id).forEach(dep => {
-      const pred = byId.get(dep.predecessor_id); if (!pred) return;
-      const p = visit(pred);
-      const candidate = nextWorkday(p.calculatedFinish, 1 + Math.max(0, dep.lag_work_days));
-      if (candidate > start) start = candidate;
-    });
-    visiting.delete(task.id);
-    const value = { ...task, calculatedStart: start, calculatedFinish: finishDate(start, task.duration_work_days), critical: false };
-    result.set(task.id, value); return value;
-  }
-  tasks.forEach(visit);
-  const values = [...result.values()];
-  if (!values.length) return values;
-  const projectFinish = new Date(Math.max(...values.map(t => +t.calculatedFinish)));
-  const critical = new Set(values.filter(t => +t.calculatedFinish === +projectFinish).map(t => t.id));
-  let changed = true;
-  while (changed) {
-    changed = false;
-    deps.forEach(d => {
-      if (!critical.has(d.successor_id)) return;
-      const p = result.get(d.predecessor_id), s = result.get(d.successor_id); if (!p || !s) return;
-      const expected = nextWorkday(p.calculatedFinish, 1 + Math.max(0, d.lag_work_days));
-      if (+expected === +s.calculatedStart && !critical.has(p.id)) { critical.add(p.id); changed = true; }
-    });
-  }
-  return values.map(t => ({ ...t, critical: critical.has(t.id) })).sort((a,b) => a.sort_order - b.sort_order || +a.calculatedStart - +b.calculatedStart);
-}
-
-const emptyTask = (projectId: string): Partial<Task> => ({ project_id: projectId, name: "", trade: "", start_date: iso(new Date()), duration_work_days: 1, progress: 0, status: "not_started", is_milestone: false, notes: "" });
-
-export default function SchedulePage() {
-  const [profile, setProfile] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [projectId, setProjectId] = useState("");
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [deps, setDeps] = useState<Dependency[]>([]);
-  const [editing, setEditing] = useState<Partial<Task> | null>(null);
-  const [predId, setPredId] = useState(""); const [succId, setSuccId] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => { (async () => {
-    const p = await requireActiveStaff(); if (!p) return; setProfile(p);
-    let data: any[] = [];
-    if (p.role === "admin") {
-      const r = await supabase.from("projects").select("*").order("project_name"); if (r.error) return alert(r.error.message); data = r.data || [];
-    } else {
-      const r = await supabase.from("project_staff").select("projects(*)").eq("staff_id", p.id); if (r.error) return alert(r.error.message);
-      data = r.data?.map((x:any) => x.projects).filter(Boolean) || [];
-    }
-    setProjects(data); if (data[0]) setProjectId(data[0].id); setLoading(false);
-  })(); }, []);
-
-  async function loadSchedule(id: string) {
-    if (!id) return;
-    const [t, d] = await Promise.all([
-      supabase.from("schedule_tasks").select("*").eq("project_id", id).order("sort_order"),
-      supabase.from("schedule_dependencies").select("*").eq("project_id", id)
-    ]);
-    if (t.error || d.error) return alert(t.error?.message || d.error?.message);
-    setTasks(t.data || []); setDeps(d.data || []);
-  }
-  useEffect(() => { loadSchedule(projectId); setEditing(null); }, [projectId]);
-
-  const calculated = useMemo(() => calculate(tasks, deps), [tasks, deps]);
-  const range = useMemo(() => {
-    if (!calculated.length) return null;
-    const start = new Date(Math.min(...calculated.map(t => +t.calculatedStart)));
-    const finish = new Date(Math.max(...calculated.map(t => +t.calculatedFinish)));
-    return { start, finish, days: Math.max(1, Math.round((+finish - +start) / DAY) + 1) };
-  }, [calculated]);
-
-  async function saveTask() {
-    if (!editing?.name?.trim() || !projectId) return alert("Enter a task name.");
-    const payload = { project_id: projectId, name: editing.name.trim(), trade: editing.trade || null, start_date: editing.start_date, duration_work_days: editing.is_milestone ? 0 : Number(editing.duration_work_days || 1), progress: Number(editing.progress || 0), status: editing.status, is_milestone: !!editing.is_milestone, notes: editing.notes || null, sort_order: editing.sort_order ?? tasks.length, created_by: profile?.id };
-    const r = editing.id ? await supabase.from("schedule_tasks").update(payload).eq("id", editing.id) : await supabase.from("schedule_tasks").insert(payload);
-    if (r.error) return alert(r.error.message); setEditing(null); loadSchedule(projectId);
-  }
-  async function removeTask(id: string) {
-    if (!confirm("Delete this schedule activity?")) return;
-    const r = await supabase.from("schedule_tasks").delete().eq("id", id); if (r.error) return alert(r.error.message); loadSchedule(projectId);
-  }
-  async function addDependency() {
-    if (!predId || !succId || predId === succId) return alert("Choose two different tasks.");
-    const r = await supabase.from("schedule_dependencies").insert({ project_id: projectId, predecessor_id: predId, successor_id: succId, lag_work_days: 0 });
-    if (r.error) return alert(r.error.message); setPredId(""); setSuccId(""); loadSchedule(projectId);
-  }
-  async function removeDependency(id: string) {
-    const r = await supabase.from("schedule_dependencies").delete().eq("id", id); if (r.error) return alert(r.error.message); loadSchedule(projectId);
-  }
-
-  if (loading) return <main style={{padding:24}}>Loading schedule…</main>;
-  return <main style={{padding:24, maxWidth:1500, margin:"0 auto"}}>
-    <div style={{display:"flex", justifyContent:"space-between", gap:16, alignItems:"end", flexWrap:"wrap"}}>
-      <div><h1 style={{marginBottom:4}}>Project Schedule</h1><div style={{color:"#64748b"}}>Monday–Friday working calendar</div></div>
-      <div style={{display:"flex", gap:10, alignItems:"end"}}><label>Project<br/><select value={projectId} onChange={e=>setProjectId(e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.project_name}</option>)}</select></label><button onClick={()=>setEditing(emptyTask(projectId))}>+ Add activity</button></div>
-    </div>
-
-    {editing && <section className="card" style={{marginTop:20}}><h2>{editing.id ? "Edit" : "Add"} activity</h2><div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))", gap:12}}>
-      <label>Activity<input value={editing.name||""} onChange={e=>setEditing({...editing,name:e.target.value})}/></label>
-      <label>Trade / Responsible<input value={editing.trade||""} onChange={e=>setEditing({...editing,trade:e.target.value})}/></label>
-      <label>Earliest start<input type="date" value={editing.start_date||""} onChange={e=>setEditing({...editing,start_date:e.target.value})}/></label>
-      <label>Work days<input type="number" min="1" disabled={editing.is_milestone} value={editing.is_milestone?0:editing.duration_work_days||1} onChange={e=>setEditing({...editing,duration_work_days:Number(e.target.value)})}/></label>
-      <label>Status<select value={editing.status} onChange={e=>setEditing({...editing,status:e.target.value as Task["status"]})}><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="complete">Complete</option><option value="on_hold">On hold</option></select></label>
-      <label>Progress %<input type="number" min="0" max="100" value={editing.progress||0} onChange={e=>setEditing({...editing,progress:Number(e.target.value)})}/></label>
-    </div><label style={{display:"block",marginTop:12}}><input type="checkbox" checked={!!editing.is_milestone} onChange={e=>setEditing({...editing,is_milestone:e.target.checked})}/> Milestone</label><label style={{display:"block",marginTop:12}}>Notes<textarea value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></label><div style={{display:"flex",gap:10,marginTop:12}}><button onClick={saveTask}>Save</button><button className="secondary" onClick={()=>setEditing(null)}>Cancel</button></div></section>}
-
-    <section className="card" style={{marginTop:20}}><h2>Dependencies</h2><div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}><label>Predecessor<br/><select value={predId} onChange={e=>setPredId(e.target.value)}><option value="">Choose…</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label><span>→</span><label>Successor<br/><select value={succId} onChange={e=>setSuccId(e.target.value)}><option value="">Choose…</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label><button onClick={addDependency}>Add link</button></div><div style={{marginTop:10}}>{deps.map(d=><button key={d.id} className="secondary" onClick={()=>removeDependency(d.id)} style={{margin:"4px 8px 4px 0"}}>{tasks.find(t=>t.id===d.predecessor_id)?.name} → {tasks.find(t=>t.id===d.successor_id)?.name} ×</button>)}</div></section>
-
-    <section className="card" style={{marginTop:20,overflowX:"auto"}}><div style={{display:"flex",gap:16,fontSize:13,marginBottom:12}}><span>■ Normal</span><span style={{color:"#dc2626"}}>■ Critical</span><span>◆ Milestone</span></div>
-      {!calculated.length ? <p>No schedule activities yet.</p> : <div style={{minWidth:900}}>{calculated.map(t=>{
-        const left = range ? workdayDistance(range.start,t.calculatedStart)/Math.max(1,workdayDistance(range.start,nextWorkday(range.finish)))*100 : 0;
-        const width = range ? Math.max(1.2,(Math.max(1,t.duration_work_days)/Math.max(1,workdayDistance(range.start,nextWorkday(range.finish))))*100) : 1;
-        return <div key={t.id} style={{display:"grid",gridTemplateColumns:"310px 1fr",borderTop:"1px solid #e2e8f0",minHeight:54,alignItems:"center"}}><div style={{padding:"7px 8px"}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><strong>{t.name}</strong><span><button className="secondary" onClick={()=>setEditing(t)}>Edit</button> <button className="secondary" onClick={()=>removeTask(t.id)}>×</button></span></div><small>{t.trade||"Unassigned"} · {iso(t.calculatedStart)} → {iso(t.calculatedFinish)} · {t.progress}%</small></div><div style={{position:"relative",height:34,background:"repeating-linear-gradient(90deg,#f8fafc 0,#f8fafc 24px,#eef2f7 25px)"}}>{t.is_milestone?<div title={t.name} style={{position:"absolute",left:`${left}%`,top:9,width:16,height:16,background:t.critical?"#dc2626":"#2563eb",transform:"rotate(45deg)"}}/>:<div title={t.name} style={{position:"absolute",left:`${left}%`,width:`${width}%`,minWidth:8,top:7,height:20,borderRadius:4,background:t.critical?"#dc2626":"#2563eb",overflow:"hidden"}}><div style={{height:"100%",width:`${t.progress}%`,background:"rgba(255,255,255,.35)"}}/></div>}</div></div>
-      })}</div>}
-    </section>
-  </main>;
-}
+const css=`.shell{max-width:1600px;margin:auto;padding:28px;color:#172033}.shell header,.project,.shell nav,.tabs,.legend,.calnav,.drawerhead,.actions{display:flex;align-items:center}.shell header{justify-content:space-between;gap:20px;margin-bottom:18px}.shell h1{margin:0;font-size:32px}.shell p{margin:4px 0;color:#64748b}.project{gap:12px;align-items:end}.project label{font-weight:700}.project select{display:block;min-width:270px}.shell button,.shell input,.shell select,.shell textarea{font:inherit}.shell button{cursor:pointer}.primary{border:0!important;background:#ff6b00!important;color:#111!important;font-weight:800}.project button,.actions button{padding:11px 15px;border-radius:6px;border:1px solid #cbd5e1;background:white}.project select,.shell nav input,.form input,.form select,.form textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box}.shell nav{gap:16px;background:white;border:1px solid #e2e8f0;border-radius:10px 10px 0 0;padding:10px 14px}.tabs{background:#eef2f7;padding:3px;border-radius:7px}.tabs button{border:0;background:transparent;padding:8px 15px;border-radius:5px;font-weight:700}.tabs .active{background:#172033;color:white}.shell nav input{width:280px}.legend{margin-left:auto;gap:14px;font-size:12px}.legend span:nth-child(2){color:#dc2626}.legend span:nth-child(3){color:#16a34a}.gantt,.calendar,.list{background:white;border:1px solid #e2e8f0;border-top:0;overflow:auto;max-height:72vh}.ggrid{display:grid}.contents{display:contents}.fixed{position:sticky;left:0;z-index:4;background:white;border-right:1px solid #cbd5e1}.title{height:50px;padding:15px;box-sizing:border-box;font-weight:800;border-bottom:1px solid #cbd5e1}.dates{display:grid;grid-auto-flow:column;grid-auto-columns:${CELL}px;position:sticky;top:0;z-index:3;background:white}.dates>div{text-align:center;height:50px;border-right:1px solid #edf0f4;border-bottom:1px solid #cbd5e1;padding-top:4px;box-sizing:border-box}.dates b,.dates span{display:block;font-size:11px}.weekend{background:#f4f6f8!important}.today{box-shadow:inset 2px 0 #ff6b00}.task{height:54px;padding:7px 10px;box-sizing:border-box;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;cursor:pointer}.task strong,.task small{display:block}.task small{color:#64748b;margin-top:3px}.track{height:54px;display:grid;grid-auto-flow:column;grid-auto-columns:${CELL}px;position:relative;border-bottom:1px solid #e5e7eb}.track>div:not(.bar){border-right:1px solid #edf0f4}.bar{position:absolute;top:15px;height:24px;border-radius:4px;cursor:grab;z-index:2;overflow:hidden}.bar i{display:block;height:100%;background:#ffffff40}.bar.mile{transform:rotate(45deg)}.status{font-size:11px;font-weight:700;padding:4px 7px;border-radius:999px;white-space:nowrap}.not_started{background:#e2e8f0}.in_progress{background:#dbeafe;color:#1d4ed8}.complete{background:#dcfce7;color:#15803d}.on_hold{background:#f1f5f9;color:#475569}.empty{padding:50px;text-align:center}.calendar{padding:16px;max-height:none}.calnav{gap:8px;margin-bottom:12px}.calnav h2{min-width:230px;margin:0 8px}.calnav button{padding:7px 11px;border:1px solid #cbd5e1;background:white;border-radius:5px}.week,.month{display:grid;grid-template-columns:repeat(7,1fr)}.week b{text-align:center;padding:7px;color:#64748b}.day{min-height:125px;border-top:1px solid #e5e7eb;border-right:1px solid #e5e7eb;padding:6px;overflow:hidden}.day:nth-child(7n+1){border-left:1px solid #e5e7eb}.muted{background:#f8fafc;color:#94a3b8}.cal-today>b{background:#ff6b00;border-radius:50%;padding:3px 6px}.event{color:white;border-radius:3px;padding:4px 6px;margin:4px 0;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab}.list table{width:100%;border-collapse:collapse}.list th,.list td{text-align:left;padding:12px;border-bottom:1px solid #e5e7eb}.list tr{cursor:pointer}.list tbody tr:hover{background:#f8fafc}.list em{color:#dc2626;font-size:11px}.scrim{position:fixed;inset:0;background:#0006;z-index:100;display:flex;justify-content:flex-end}.scrim aside{width:min(520px,100vw);height:100%;background:white;display:flex;flex-direction:column}.drawerhead{justify-content:space-between;padding:22px;border-bottom:1px solid #e5e7eb}.drawerhead h2{margin:0}.drawerhead button{font-size:28px;border:0;background:white}.form{padding:22px;display:grid;gap:16px;overflow:auto}.form label{font-weight:700}.form input,.form select,.form textarea{width:100%;display:block;margin-top:5px}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form .check{display:flex;gap:8px;align-items:center}.form .check input{width:auto;margin:0}.actions{margin-top:auto;padding:16px 22px;border-top:1px solid #e5e7eb;gap:10px}.actions i{flex:1}.danger{color:#b91c1c!important;border-color:#fecaca!important}.empty{color:#64748b}@media(max-width:800px){.shell{padding:12px}.shell header{align-items:stretch;flex-direction:column}.project{align-items:stretch}.project label{flex:1}.project select{min-width:0;width:100%}.shell nav{flex-wrap:wrap}.shell nav input{width:100%}.legend{margin-left:0}.day{min-height:90px}.two{grid-template-columns:1fr}}`;
