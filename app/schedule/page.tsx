@@ -1,123 +1,2006 @@
 "use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { requireActiveStaff } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
+import {
+  Activity,
+  Task,
+  Link,
+  Snapshot,
+  Status,
+  labels,
+  today,
+  day,
+  fmt,
+  shift,
+  distance,
+  work,
+  normalize,
+  addWork,
+  workDistance,
+  finish,
+  durationTo,
+  calculate,
+  validate,
+  normalizeProgress,
+  lanes,
+} from "./engine";
+import "./schedule.css";
 
-type Status = "not_started" | "in_progress" | "complete" | "on_hold";
 type View = "gantt" | "calendar" | "list";
-type ItemType = "task" | "phase";
-type Task = {
-  id:string; project_id:string; name:string; trade:string|null; start_date:string;
-  duration_work_days:number; progress:number; status:Status; is_milestone:boolean;
-  sort_order:number; notes:string|null; item_type:ItemType; parent_id:string|null;
+type Project = { id: string; project_name: string };
+const ordered = (a: Task, b: Task) =>
+  a.sort_order - b.sort_order || a.name.localeCompare(b.name);
+const short = (s: string) =>
+  day(s).toLocaleDateString("en-CA", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+const empty = (
+  project: string,
+  type: "task" | "phase",
+  parent: string | null = null,
+  start = today(),
+): Task => ({
+  id: crypto.randomUUID(),
+  project_id: project,
+  name: "",
+  trade: "",
+  start_date: normalize(start),
+  duration_work_days: 1,
+  progress: 0,
+  status: "not_started",
+  is_milestone: false,
+  sort_order: 0,
+  notes: "",
+  item_type: type,
+  parent_id: parent,
+});
+const colour = (t: Activity) =>
+  t.item_type === "phase"
+    ? "phase"
+    : t.critical
+      ? "critical"
+      : t.status === "complete"
+        ? "complete"
+        : t.status === "on_hold"
+          ? "held"
+          : "normal";
+const clean = (data: Snapshot): Snapshot => ({
+  ...data,
+  tasks: data.tasks.map((t) =>
+    t.item_type === "phase"
+      ? t
+      : normalizeProgress(
+          t,
+          t.status === "complete"
+            ? { status: "complete" }
+            : { progress: t.progress },
+        ),
+  ),
+});
+
+export default function SchedulePage() {
+  const [projects, setProjects] = useState<Project[]>([]),
+    [project, setProject] = useState(""),
+    [snap, setSnap] = useState<Snapshot | null>(null);
+  const [view, setView] = useState<View>("gantt"),
+    [zoom, setZoom] = useState<"week" | "month">("week"),
+    [calendarMode, setCalendarMode] = useState<"week" | "month">("month"),
+    [anchor, setAnchor] = useState(today());
+  const [search, setSearch] = useState(""),
+    [phaseFilter, setPhaseFilter] = useState(""),
+    [tradeFilter, setTradeFilter] = useState(""),
+    [statusFilter, setStatusFilter] = useState(""),
+    [criticalOnly, setCriticalOnly] = useState(false),
+    [lookahead, setLookahead] = useState(0);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
+    [editing, setEditing] = useState<Task | null>(null),
+    [undo, setUndo] = useState<Snapshot | null>(null),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(""),
+    [error, setError] = useState(""),
+    [stale, setStale] = useState(false),
+    [baselineName, setBaselineName] = useState<string | null>(null);
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const activeMutation = useRef(false);
+  const loadSeq = useRef(0);
+  useEffect(() => {
+    let canceled = false;
+    (async () => {
+      try {
+        const p = await requireActiveStaff();
+        if (!p) return;
+        const r =
+          p.role === "admin"
+            ? await supabase
+                .from("projects")
+                .select("id,project_name")
+                .order("project_name")
+            : await supabase
+                .from("project_staff")
+                .select("projects(id,project_name)")
+                .eq("staff_id", p.id);
+        if (r.error) throw r.error;
+        const rows = (p.role === "admin"
+          ? r.data
+          : (r.data || [])
+              .map((x: any) => x.projects)
+              .filter(Boolean)) as unknown as Project[];
+        if (!canceled) {
+          setProjects(rows);
+          if (rows.length) setProject(rows[0].id);
+          else setMessage("No assigned projects.");
+        }
+      } catch (e) {
+        if (!canceled) setError(String((e as Error).message));
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, []);
+  async function load(id = project) {
+    const seq = ++loadSeq.current;
+    setError("");
+    try {
+      const r = await supabase.rpc("schedule_v4_read", { p_project: id });
+      if (r.error) throw r.error;
+      if (seq === loadSeq.current && projectRef.current === id) {
+        setSnap(clean(r.data as Snapshot));
+        setStale(false);
+        setUndo(null);
+        setEditing(null);
+      }
+    } catch (e) {
+      if (seq === loadSeq.current) setError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    setSnap(null);
+    setEditing(null);
+    setUndo(null);
+    setCollapsed(new Set());
+    setPhaseFilter("");
+    setTradeFilter("");
+    setStale(false);
+    if (project) void load(project);
+    return () => {
+      loadSeq.current++;
+    };
+  }, [project]);
+  useEffect(() => {
+    if (!snap) return;
+    let canceled = false;
+    async function check() {
+      if (activeMutation.current) return;
+      const r = await supabase.rpc("schedule_v4_read", { p_project: project });
+      if (!canceled && !r.error && r.data?.revision !== snap?.revision)
+        setStale(true);
+    }
+    const timer = setInterval(check, 30000);
+    window.addEventListener("focus", check);
+    return () => {
+      canceled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, [project, snap?.revision]);
+  const calculated = useMemo(() => {
+    if (!snap) return { rows: [] as Activity[], problem: "" };
+    try {
+      return { rows: calculate(snap.tasks, snap.links), problem: "" };
+    } catch (e) {
+      return { rows: [] as Activity[], problem: (e as Error).message };
+    }
+  }, [snap]);
+  const activities = calculated.rows,
+    phases = activities.filter((t) => t.item_type === "phase").sort(ordered);
+  const trades = [
+    ...new Set(
+      (snap?.tasks || []).map((t) => t.trade).filter(Boolean) as string[],
+    ),
+  ].sort();
+  const matched = activities.filter(
+    (t) =>
+      t.item_type === "task" &&
+      (!phaseFilter ||
+        (phaseFilter === "none"
+          ? !t.parent_id
+          : t.parent_id === phaseFilter)) &&
+      (!tradeFilter || t.trade === tradeFilter) &&
+      (!statusFilter || t.status === statusFilter) &&
+      (!criticalOnly || t.critical) &&
+      (!search ||
+        `${t.name} ${t.trade || ""} ${phases.find((p) => p.id === t.parent_id)?.name || ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase())) &&
+      (!lookahead ||
+        (t.finish >= anchor && t.start <= shift(anchor, lookahead * 7 - 1))),
+  );
+  const rows: Activity[] = [];
+  for (const p of phases) {
+    const children = matched.filter((t) => t.parent_id === p.id).sort(ordered);
+    if (
+      children.length ||
+      (!phaseFilter &&
+        !tradeFilter &&
+        !statusFilter &&
+        !criticalOnly &&
+        !search &&
+        !lookahead)
+    ) {
+      rows.push(p);
+      if (!collapsed.has(p.id)) rows.push(...children);
+    }
+  }
+  rows.push(...matched.filter((t) => !t.parent_id).sort(ordered));
+  const projectFinish = activities
+    .filter((t) => t.item_type === "task")
+    .map((t) => t.finish)
+    .sort()
+    .slice(-1)[0];
+  const drift = (t: Activity) => {
+    const base = snap?.baseline?.dates[t.id];
+    return base ? workDistance(base.finish, t.finish) : null;
+  };
+  async function commit(next: Snapshot, label: string, remember = true) {
+    if (!snap || activeMutation.current) return false;
+    const before = snap,
+      id = project;
+    setError("");
+    setMessage("");
+    try {
+      validate(next.tasks, next.links);
+      activeMutation.current = true;
+      setBusy(true);
+      const r = await supabase.rpc("schedule_v4_save", {
+        p_project: id,
+        p_revision: before.revision,
+        p_tasks: next.tasks,
+        p_links: next.links,
+        p_baseline: next.baseline,
+      });
+      if (r.error) throw r.error;
+      if (projectRef.current !== id) return false;
+      setSnap(clean(r.data as Snapshot));
+      setUndo(remember ? before : null);
+      setStale(false);
+      setMessage(label + " saved.");
+      return true;
+    } catch (e) {
+      if (projectRef.current === id) {
+        const text = (e as Error).message;
+        setError(text);
+        if (text.includes("another session")) setStale(true);
+      }
+      return false;
+    } finally {
+      activeMutation.current = false;
+      setBusy(false);
+    }
+  }
+  async function patch(id: string, change: Partial<Task>) {
+    if (!snap) return false;
+    return commit(
+      {
+        ...snap,
+        tasks: snap.tasks.map((t) =>
+          t.id === id ? normalizeProgress(t, change) : t,
+        ),
+      },
+      "Activity",
+    );
+  }
+  async function move(id: string, start: string) {
+    const t = activities.find((t) => t.id === id);
+    if (!t || t.item_type === "phase") return;
+    start = normalize(start);
+    const minimum = snap!.links
+      .filter((l) => l.successor_id === id)
+      .map((l) =>
+        addWork(
+          activities.find((t) => t.id === l.predecessor_id)!.finish,
+          1 + l.lag_work_days,
+        ),
+      )
+      .sort()
+      .slice(-1)[0];
+    if (minimum && start < minimum) {
+      setError(
+        `Dependencies require ${t.name} to start ${minimum} or later. Edit its predecessor links first.`,
+      );
+      return;
+    }
+    await patch(id, { start_date: start });
+  }
+  async function reorder(id: string, delta: number) {
+    if (!snap) return;
+    const t = snap.tasks.find((t) => t.id === id)!;
+    const peers = snap.tasks
+      .filter((x) => x.item_type === t.item_type && x.parent_id === t.parent_id)
+      .sort(ordered);
+    const i = peers.findIndex((x) => x.id === id),
+      j = i + delta;
+    if (j < 0 || j >= peers.length) return;
+    [peers[i], peers[j]] = [peers[j], peers[i]];
+    const positions = new Map(peers.map((x, k) => [x.id, k]));
+    await commit(
+      {
+        ...snap,
+        tasks: snap.tasks.map((x) =>
+          positions.has(x.id) ? { ...x, sort_order: positions.get(x.id)! } : x,
+        ),
+      },
+      "Order",
+    );
+  }
+  async function duplicate(t: Task) {
+    if (!snap) return;
+    const copy = {
+      ...t,
+      id: crypto.randomUUID(),
+      name: t.name + " (copy)",
+      sort_order: Math.max(-1, ...snap.tasks.map((x) => x.sort_order)) + 1,
+      status: "not_started" as Status,
+      progress: 0,
+    };
+    await commit({ ...snap, tasks: [...snap.tasks, copy] }, "Duplicate");
+  }
+  async function remove(t: Task) {
+    if (
+      !snap ||
+      !confirm(
+        t.item_type === "phase"
+          ? "Delete this phase? Its activities become ungrouped."
+          : "Delete this activity and its links?",
+      )
+    )
+      return;
+    const next = {
+      ...snap,
+      tasks: snap.tasks
+        .filter((x) => x.id !== t.id)
+        .map((x) => (x.parent_id === t.id ? { ...x, parent_id: null } : x)),
+      links: snap.links.filter(
+        (l) => l.predecessor_id !== t.id && l.successor_id !== t.id,
+      ),
+    };
+    if (await commit(next, "Deletion")) setEditing(null);
+  }
+  function open(t: Task) {
+    setError("");
+    setEditing({ ...t });
+  }
+  function toggle(id: string) {
+    setCollapsed((old) => {
+      const n = new Set(old);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+  async function saveBaseline() {
+    if (!snap || !baselineName?.trim()) return;
+    if (
+      snap.baseline &&
+      !confirm(
+        "Replace the saved baseline? Undo remains available until the next change.",
+      )
+    )
+      return;
+    const dates = Object.fromEntries(
+      activities.map((t) => [
+        t.id,
+        { name: t.name, start: t.start, finish: t.finish },
+      ]),
+    );
+    if (
+      await commit(
+        {
+          ...snap,
+          baseline: {
+            name: baselineName.trim(),
+            saved_at: new Date().toISOString(),
+            dates,
+          },
+        },
+        "Baseline",
+      )
+    )
+      setBaselineName(null);
+  }
+  const title =
+    projects.find((p) => p.id === project)?.project_name || "Project";
+  return (
+    <main className="fd">
+      <div className="screen">
+        <header className="heading">
+          <div>
+            <div className="eyebrow">FIELD DOCS / SCHEDULING</div>
+            <h1>Project schedule</h1>
+            <p>Plan the work. See what controls the finish.</p>
+          </div>
+          <select
+            aria-label="Project"
+            value={project}
+            disabled={busy}
+            onChange={(e) => setProject(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.project_name}
+              </option>
+            ))}
+          </select>
+        </header>
+        {error && (
+          <div role="alert" className="notice error">
+            {error}
+          </div>
+        )}
+        {message && (
+          <div role="status" className="notice success">
+            {message}
+          </div>
+        )}
+        {stale && (
+          <div className="notice warning">
+            Another session changed this schedule. Reload before editing
+            further.{" "}
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (!editing || confirm("Reload and discard the open draft?"))
+                  void load();
+              }}
+            >
+              Reload latest
+            </button>
+          </div>
+        )}
+        {!snap && project && (
+          <p>
+            Loading schedule…{" "}
+            {error && <button onClick={() => void load()}>Retry</button>}
+          </p>
+        )}
+        {snap && (
+          <>
+            {calculated.problem && (
+              <div className="notice error">
+                {calculated.problem} Calculations are paused.{" "}
+                <button onClick={() => setView("list")}>
+                  Open repair list
+                </button>
+              </div>
+            )}
+            <div className="summary">
+              <div>
+                <small>PLANNED FINISH</small>
+                <strong>{projectFinish ? short(projectFinish) : "—"}</strong>
+              </div>
+              <div>
+                <small>CRITICAL ACTIVITIES</small>
+                <strong className="red">
+                  {
+                    activities.filter(
+                      (t) => t.item_type === "task" && t.critical,
+                    ).length
+                  }
+                </strong>
+              </div>
+              <div>
+                <small>OVERDUE / INCOMPLETE</small>
+                <strong>
+                  {
+                    activities.filter(
+                      (t) => t.item_type === "task" && t.overdue,
+                    ).length
+                  }
+                </strong>
+              </div>
+              <div>
+                <small>BASELINE</small>
+                <strong>{snap.baseline?.name || "Not captured"}</strong>
+              </div>
+            </div>
+            <div className="actions">
+              <div className="tabs">
+                {(["gantt", "calendar", "list"] as View[]).map((v) => (
+                  <button
+                    key={v}
+                    aria-pressed={view === v}
+                    className={view === v ? "selected" : ""}
+                    onClick={() => setView(v)}
+                  >
+                    {v[0].toUpperCase() + v.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <button
+                disabled={busy}
+                onClick={() => open(empty(project, "phase"))}
+              >
+                + Phase
+              </button>
+              <button
+                disabled={busy}
+                className="primary"
+                onClick={() =>
+                  open(
+                    empty(
+                      project,
+                      "task",
+                      phaseFilter && phaseFilter !== "none"
+                        ? phaseFilter
+                        : null,
+                    ),
+                  )
+                }
+              >
+                + Activity
+              </button>
+              <button
+                disabled={!undo || busy || stale}
+                onClick={() => undo && void commit(undo, "Undo", false)}
+              >
+                Undo last change
+              </button>
+              <button
+                disabled={busy || !!calculated.problem}
+                onClick={() =>
+                  setBaselineName(snap.baseline?.name || "Approved schedule")
+                }
+              >
+                Capture baseline
+              </button>
+              <button
+                disabled={!!calculated.problem}
+                onClick={() => window.print()}
+              >
+                Print / PDF
+              </button>
+            </div>
+            <div className="filters">
+              <input
+                aria-label="Search schedule"
+                placeholder="Search activities, phases, trades"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select
+                aria-label="Phase filter"
+                value={phaseFilter}
+                onChange={(e) => setPhaseFilter(e.target.value)}
+              >
+                <option value="">All phases</option>
+                <option value="none">Ungrouped</option>
+                {phases.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Trade filter"
+                value={tradeFilter}
+                onChange={(e) => setTradeFilter(e.target.value)}
+              >
+                <option value="">All trades</option>
+                {trades.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Status filter"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All statuses</option>
+                {Object.entries(labels).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <button
+                aria-pressed={criticalOnly}
+                className={
+                  criticalOnly ? "critical-filter on" : "critical-filter"
+                }
+                onClick={() => setCriticalOnly(!criticalOnly)}
+              >
+                Critical only
+              </button>
+              <select
+                aria-label="Look ahead"
+                value={lookahead}
+                onChange={(e) => {
+                  setLookahead(+e.target.value);
+                  setAnchor(today());
+                }}
+              >
+                <option value={0}>Full schedule</option>
+                <option value={2}>2-week look-ahead</option>
+                <option value={3}>3-week look-ahead</option>
+                <option value={6}>6-week look-ahead</option>
+              </select>
+              {lookahead > 0 && (
+                <input
+                  aria-label="Look ahead start"
+                  type="date"
+                  value={anchor}
+                  onChange={(e) => e.target.value && setAnchor(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="viewtools">
+              <span>
+                <b className="red">●</b> Critical · zero total float{" "}
+                <b className="blue">●</b> Other activities{" "}
+                <span className="baseline-key">━ Baseline</span>
+              </span>
+              {view === "gantt" && (
+                <>
+                  <button onClick={() => setCollapsed(new Set())}>
+                    Expand all
+                  </button>
+                  <select
+                    aria-label="Gantt zoom"
+                    value={zoom}
+                    onChange={(e) =>
+                      setZoom(e.target.value as "week" | "month")
+                    }
+                  >
+                    <option value="week">Week / day detail</option>
+                    <option value="month">Month overview</option>
+                  </select>
+                </>
+              )}
+              <small>Monday–Friday · holidays count as workdays</small>
+            </div>
+            {view === "gantt" && !calculated.problem && (
+              <Gantt
+                rows={rows}
+                all={activities}
+                links={snap.links}
+                baseline={snap.baseline}
+                zoom={zoom}
+                busy={busy || stale}
+                collapsed={collapsed}
+                toggle={toggle}
+                open={open}
+                move={move}
+                resize={(id, n) => patch(id, { duration_work_days: n })}
+                add={(p) => open(empty(project, "task", p))}
+                reorder={reorder}
+                lookahead={lookahead}
+                anchor={anchor}
+              />
+            )}
+            {view === "calendar" && !calculated.problem && (
+              <Calendar
+                rows={matched}
+                anchor={anchor}
+                setAnchor={setAnchor}
+                mode={calendarMode}
+                setMode={setCalendarMode}
+                open={open}
+                add={(d) =>
+                  open(
+                    empty(
+                      project,
+                      "task",
+                      phaseFilter && phaseFilter !== "none"
+                        ? phaseFilter
+                        : null,
+                      d,
+                    ),
+                  )
+                }
+                move={move}
+                busy={busy || stale}
+              />
+            )}
+            {view === "list" && (
+              <div className="tablewrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Activity / phase</th>
+                      <th>Trade</th>
+                      <th>Earliest start</th>
+                      <th>Scheduled dates</th>
+                      <th>Work days</th>
+                      <th>Status</th>
+                      <th>Progress</th>
+                      <th>Float / slip</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(calculated.problem
+                      ? snap.tasks.map(
+                          (t) =>
+                            ({
+                              ...t,
+                              start: t.start_date,
+                              finish: t.start_date,
+                              float: 0,
+                              critical: false,
+                              overdue: false,
+                              controlling: [],
+                            }) as Activity,
+                        )
+                      : rows
+                    ).map((t) => (
+                      <tr
+                        key={t.id}
+                        className={t.item_type === "phase" ? "phase-row" : ""}
+                      >
+                        <td>
+                          <button
+                            aria-label={`Move ${t.name} up`}
+                            disabled={busy || stale}
+                            onClick={() => void reorder(t.id, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            aria-label={`Move ${t.name} down`}
+                            disabled={busy || stale}
+                            onClick={() => void reorder(t.id, 1)}
+                          >
+                            ↓
+                          </button>
+                        </td>
+                        <td>
+                          <Inline
+                            key={t.name}
+                            value={t.name}
+                            disabled={busy || stale}
+                            save={(v) => patch(t.id, { name: v })}
+                          />
+                          {t.critical && (
+                            <span className="badge">CRITICAL</span>
+                          )}
+                          {t.overdue && <small className="red"> Overdue</small>}
+                        </td>
+                        <td>
+                          {t.item_type === "task" && (
+                            <Inline
+                              key={t.trade}
+                              value={t.trade || ""}
+                              disabled={busy || stale}
+                              save={(v) => patch(t.id, { trade: v })}
+                            />
+                          )}
+                        </td>
+                        <td>
+                          {t.item_type === "task" && (
+                            <Inline
+                              key={t.start_date}
+                              value={t.start_date}
+                              type="date"
+                              disabled={busy || stale}
+                              save={(v) => patch(t.id, { start_date: v })}
+                            />
+                          )}
+                        </td>
+                        <td>
+                          {short(t.start)}–{short(t.finish)}
+                        </td>
+                        <td>
+                          {t.item_type === "task" && !t.is_milestone && (
+                            <Inline
+                              key={t.duration_work_days}
+                              value={String(t.duration_work_days)}
+                              type="number"
+                              disabled={busy || stale}
+                              save={(v) =>
+                                patch(t.id, { duration_work_days: Number(v) })
+                              }
+                            />
+                          )}
+                        </td>
+                        <td>
+                          {t.item_type === "task" ? (
+                            <select
+                              aria-label={`Status ${t.name}`}
+                              disabled={busy || stale}
+                              value={t.status}
+                              onChange={(e) =>
+                                void patch(t.id, {
+                                  status: e.target.value as Status,
+                                })
+                              }
+                            >
+                              {Object.entries(labels).map(([k, v]) => (
+                                <option key={k} value={k}>
+                                  {v}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            "Summary"
+                          )}
+                        </td>
+                        <td>
+                          {t.item_type === "task" ? (
+                            <Inline
+                              key={t.progress}
+                              value={String(t.progress)}
+                              type="number"
+                              disabled={busy || stale}
+                              save={(v) => patch(t.id, { progress: Number(v) })}
+                            />
+                          ) : (
+                            t.progress + "%"
+                          )}
+                        </td>
+                        <td>
+                          {t.item_type === "task" &&
+                            !calculated.problem &&
+                            `${t.float}d float`}
+                          {drift(t) !== null && (
+                            <small className={(drift(t) || 0) > 0 ? "red" : ""}>
+                              {drift(t)! > 0 ? "+" : ""}
+                              {drift(t)}d vs baseline
+                            </small>
+                          )}
+                        </td>
+                        <td>
+                          <button onClick={() => open(t)}>Edit</button>
+                          {t.item_type === "task" && (
+                            <button
+                              disabled={busy || stale}
+                              onClick={() => void duplicate(t)}
+                            >
+                              Duplicate
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {!calculated.problem && !matched.length && (
+              <p className="empty">
+                No matching activities. Add an activity or adjust your filters.
+              </p>
+            )}
+            <p className="footnote">
+              Critical path reflects the complete planned schedule, including
+              completed activities. Float is the work-day delay available
+              without moving the project finish. Undo covers your most recent
+              change in this session.
+            </p>
+          </>
+        )}
+      </div>
+      <section className="print">
+        <h1>
+          {title} —{" "}
+          {lookahead ? lookahead + "-week look-ahead" : "Project schedule"}
+        </h1>
+        <p>
+          {lookahead
+            ? anchor + " to " + shift(anchor, lookahead * 7 - 1)
+            : "Full schedule"}{" "}
+          · Prepared {today()} · Monday–Friday
+        </p>
+        <p>
+          Filters:{" "}
+          {phaseFilter
+            ? phases.find((p) => p.id === phaseFilter)?.name || "Ungrouped"
+            : "All phases"}{" "}
+          / {tradeFilter || "All trades"} /{" "}
+          {statusFilter ? labels[statusFilter as Status] : "All statuses"}
+          {criticalOnly ? " / Critical only" : ""}
+          {search ? " / Search: " + search : ""}
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Activity / phase</th>
+              <th>Trade</th>
+              <th>Start</th>
+              <th>Finish</th>
+              <th>Status / progress</th>
+              <th>Float</th>
+              <th>Slip</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matched.map((t) => (
+              <tr key={t.id}>
+                <td>
+                  {t.name}
+                  {t.critical ? " [CRITICAL]" : ""}
+                  <small>
+                    {phases.find((p) => p.id === t.parent_id)?.name}
+                  </small>
+                </td>
+                <td>{t.trade}</td>
+                <td>{t.start}</td>
+                <td>{t.finish}</td>
+                <td>
+                  {labels[t.status]} {t.progress}%
+                </td>
+                <td>{t.float}d</td>
+                <td>{drift(t) === null ? "—" : drift(t) + "d"}</td>
+                <td>{t.notes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      {editing && snap && (
+        <Editor
+          key={editing.id}
+          task={editing}
+          snapshot={snap}
+          activities={activities}
+          busy={busy}
+          stale={stale}
+          saveError={error}
+          close={() => setEditing(null)}
+          remove={remove}
+          save={async (t, links) => {
+            const tasks = snap.tasks.some((x) => x.id === t.id)
+              ? snap.tasks.map((x) => (x.id === t.id ? t : x))
+              : [
+                  ...snap.tasks,
+                  {
+                    ...t,
+                    sort_order:
+                      Math.max(-1, ...snap.tasks.map((x) => x.sort_order)) + 1,
+                  },
+                ];
+            const next = {
+              ...snap,
+              tasks,
+              links: [
+                ...snap.links.filter((l) => l.successor_id !== t.id),
+                ...links,
+              ],
+            };
+            if (await commit(next, "Schedule")) setEditing(null);
+          }}
+        />
+      )}
+      {baselineName !== null && (
+        <div className="overlay">
+          <section
+            className="baseline-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Capture baseline"
+          >
+            <h2>Capture approved dates</h2>
+            {error && (
+              <p role="alert" className="notice error">
+                {error}
+              </p>
+            )}
+            <p>
+              This saves the current calculated start and finish dates for
+              comparison. Capturing again replaces the previous baseline.
+            </p>
+            <input
+              autoFocus
+              aria-label="Baseline name"
+              value={baselineName}
+              onChange={(e) => setBaselineName(e.target.value)}
+            />
+            <button disabled={busy} onClick={() => setBaselineName(null)}>
+              Cancel
+            </button>
+            <button
+              disabled={busy || !baselineName.trim()}
+              onClick={() => void saveBaseline()}
+            >
+              Capture
+            </button>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function Inline({
+  value,
+  type = "text",
+  disabled,
+  save,
+}: {
+  value: string;
+  type?: string;
+  disabled: boolean;
+  save: (v: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <input
+      aria-label="Edit value"
+      type={type}
+      disabled={disabled}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== value)
+          void save(draft).then((ok) => {
+            if (!ok) setDraft(value);
+          });
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          setDraft(value);
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+type GanttProps = {
+  rows: Activity[];
+  all: Activity[];
+  links: Link[];
+  baseline: Snapshot["baseline"];
+  zoom: "week" | "month";
+  busy: boolean;
+  collapsed: Set<string>;
+  toggle: (id: string) => void;
+  open: (t: Task) => void;
+  move: (id: string, d: string) => Promise<void>;
+  resize: (id: string, n: number) => Promise<boolean>;
+  add: (id: string) => void;
+  reorder: (id: string, n: number) => Promise<void>;
+  lookahead: number;
+  anchor: string;
 };
-type Dependency = { id:string; predecessor_id:string; successor_id:string; lag_work_days:number };
-type Calculated = Task & { start:Date; finish:Date; critical:boolean; floatDays:number };
-
-const DAY=86400000, CELL=34;
-const statusLabels:Record<Status,string>={not_started:"Not started",in_progress:"In progress",complete:"Complete",on_hold:"On hold"};
-const iso=(d:Date)=>d.toISOString().slice(0,10);
-const parseDate=(s:string)=>new Date(`${s}T12:00:00`);
-const isWorkday=(d:Date)=>d.getDay()!==0&&d.getDay()!==6;
-const sameDay=(a:Date,b:Date)=>iso(a)===iso(b);
-function addCalendarDays(d:Date,n:number){const x=new Date(d);x.setDate(x.getDate()+n);return x}
-function addWorkdays(d:Date,n:number){const x=new Date(d);let moved=0;while(moved<n){x.setDate(x.getDate()+1);if(isWorkday(x))moved++}while(!isWorkday(x))x.setDate(x.getDate()+1);return x}
-function subtractWorkdays(d:Date,n:number){const x=new Date(d);let moved=0;while(moved<n){x.setDate(x.getDate()-1);if(isWorkday(x))moved++}while(!isWorkday(x))x.setDate(x.getDate()-1);return x}
-function finishDate(start:Date,duration:number){return duration<=1?new Date(start):addWorkdays(start,duration-1)}
-function calendarDistance(a:Date,b:Date){return Math.round((+b-+a)/DAY)}
-function workdayDistance(a:Date,b:Date){let count=0,x=new Date(a);while(x<b){x.setDate(x.getDate()+1);if(isWorkday(x))count++}return count}
-
-function calculateSchedule(rows:Task[],deps:Dependency[]):Calculated[]{
-  const tasks=rows.filter(r=>r.item_type!=="phase");
-  const byId=new Map(tasks.map(t=>[t.id,t]));
-  const calculated=new Map<string,Calculated>();
-  const visiting=new Set<string>();
-  function forward(task:Task):Calculated{
-    if(calculated.has(task.id))return calculated.get(task.id)!;
-    if(visiting.has(task.id)){const start=parseDate(task.start_date);return{...task,start,finish:finishDate(start,task.duration_work_days),critical:false,floatDays:0}}
-    visiting.add(task.id);let start=parseDate(task.start_date);
-    deps.filter(d=>d.successor_id===task.id).forEach(dep=>{const predecessor=byId.get(dep.predecessor_id);if(!predecessor)return;const pred=forward(predecessor);const candidate=addWorkdays(pred.finish,1+Math.max(0,dep.lag_work_days));if(candidate>start)start=candidate});
-    visiting.delete(task.id);const value={...task,start,finish:finishDate(start,task.duration_work_days),critical:false,floatDays:0};calculated.set(task.id,value);return value;
+function Gantt(p: GanttProps) {
+  const cell = p.zoom === "week" ? 32 : 12,
+    rowHeight = 64;
+  const [left, setLeft] = useState(390);
+  useEffect(() => {
+    const update = () => setLeft(window.innerWidth < 800 ? 220 : 390);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  const dates = p.all
+    .flatMap((t) => [
+      t.start,
+      t.finish,
+      ...(p.baseline?.dates[t.id]
+        ? [p.baseline.dates[t.id].start, p.baseline.dates[t.id].finish]
+        : []),
+    ])
+    .sort();
+  const start = p.lookahead ? p.anchor : shift(dates[0] || today(), -3),
+    end = p.lookahead
+      ? shift(p.anchor, p.lookahead * 7 - 1)
+      : shift(dates.slice(-1)[0] || shift(today(), 28), 4),
+    count = distance(start, end) + 1;
+  const viewport = useRef<HTMLDivElement>(null),
+    gesture = useRef<{
+      id: string;
+      x: number;
+      start: string;
+      duration: number;
+    } | null>(null),
+    suppress = useRef(false);
+  const [preview, setPreview] = useState<{
+    id: string;
+    duration: number;
+  } | null>(null);
+  if (count > 5000)
+    return (
+      <p className="notice warning">
+        This schedule spans more than 5,000 calendar days. Select a look-ahead
+        window to work with a smaller date range.
+      </p>
+    );
+  const timeline = Array.from({ length: count }, (_, i) => shift(start, i));
+  const groups: { label: string; days: number }[] = [];
+  for (const d of timeline) {
+    const label = day(d).toLocaleDateString("en-CA", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    if (groups.slice(-1)[0]?.label === label) groups[groups.length - 1].days++;
+    else groups.push({ label, days: 1 });
   }
-  tasks.forEach(forward);const taskValues=[...calculated.values()];
-  if(!taskValues.length)return rows.map(r=>{const start=parseDate(r.start_date);return{...r,start,finish:start,critical:false,floatDays:0}});
-  const projectFinish=new Date(Math.max(...taskValues.map(t=>+t.finish)));
-  const latestFinish=new Map<string,Date>();
-  const reverseVisiting=new Set<string>();
-  function backward(task:Calculated):Date{
-    if(latestFinish.has(task.id))return latestFinish.get(task.id)!;
-    if(reverseVisiting.has(task.id))return projectFinish;
-    reverseVisiting.add(task.id);const outgoing=deps.filter(d=>d.predecessor_id===task.id).filter(d=>calculated.has(d.successor_id));let latest=projectFinish;
-    if(outgoing.length){latest=new Date(Math.min(...outgoing.map(dep=>{const successor=calculated.get(dep.successor_id)!;const successorFinish=backward(successor);const successorLatestStart=subtractWorkdays(successorFinish,Math.max(0,successor.duration_work_days-1));return +subtractWorkdays(successorLatestStart,1+Math.max(0,dep.lag_work_days))})))}
-    reverseVisiting.delete(task.id);latestFinish.set(task.id,latest);return latest;
+  const x = (d: string) => distance(start, d) * cell;
+  function pointerMove(e: React.PointerEvent) {
+    const g = gesture.current;
+    if (!g) return;
+    const n = durationTo(
+      g.start,
+      shift(finish(g.start, g.duration), Math.round((e.clientX - g.x) / cell)),
+    );
+    setPreview({ id: g.id, duration: n });
   }
-  taskValues.forEach(backward);
-  const withFloat=taskValues.map(t=>{const totalFloat=Math.max(0,workdayDistance(t.finish,latestFinish.get(t.id)!));return{...t,floatDays:totalFloat,critical:totalFloat===0}});
-  const taskMap=new Map(withFloat.map(t=>[t.id,t]));
-  const phases=rows.filter(r=>r.item_type==="phase").map(phase=>{const children=rows.filter(r=>r.parent_id===phase.id&&r.item_type!=="phase").map(r=>taskMap.get(r.id)).filter(Boolean) as Calculated[];const start=children.length?new Date(Math.min(...children.map(c=>+c.start))):parseDate(phase.start_date);const finish=children.length?new Date(Math.max(...children.map(c=>+c.finish))):start;const floatDays=children.length?Math.min(...children.map(c=>c.floatDays)):0;return{...phase,start,finish,critical:children.some(c=>c.critical),floatDays}});
-  return [...phases,...withFloat];
+  function pointerEnd(e: React.PointerEvent) {
+    const g = gesture.current;
+    if (!g) return;
+    e.stopPropagation();
+    const n = durationTo(
+      g.start,
+      shift(finish(g.start, g.duration), Math.round((e.clientX - g.x) / cell)),
+    );
+    gesture.current = null;
+    setPreview(null);
+    if (n !== g.duration) void p.resize(g.id, n);
+  }
+  return (
+    <div className="gantt" ref={viewport} aria-label="Gantt chart">
+      <div className="gantt-inner" style={{ width: left + count * cell }}>
+        <div className="gantt-head">
+          <div className="frozen title" style={{ width: left }}>
+            Activity / phase{" "}
+            <button
+              onClick={() => {
+                if (viewport.current)
+                  viewport.current.scrollLeft = Math.max(0, x(today()) - 100);
+              }}
+            >
+              Today
+            </button>
+          </div>
+          <div style={{ width: count * cell }}>
+            <div className="month-head">
+              {groups.map((g, i) => (
+                <span key={i} style={{ width: g.days * cell }}>
+                  {g.label}
+                </span>
+              ))}
+            </div>
+            <div className="date-head">
+              {timeline.map((d) => (
+                <span
+                  key={d}
+                  style={{ width: cell }}
+                  className={!work(d) ? "weekend" : ""}
+                >
+                  {p.zoom === "week"
+                    ? day(d).getUTCDate()
+                    : day(d).getUTCDay() === 1
+                      ? day(d).getUTCDate()
+                      : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+        {p.rows.map((t) => {
+          const displayedFinish =
+            preview?.id === t.id ? finish(t.start, preview.duration) : t.finish;
+          const base = p.baseline?.dates[t.id];
+          return (
+            <div className="gantt-row" key={t.id} style={{ height: rowHeight }}>
+              <div
+                className={`frozen rowname ${t.item_type === "phase" ? "phase-row" : ""}`}
+                style={{ width: left }}
+              >
+                <div className="order">
+                  <button
+                    disabled={p.busy}
+                    aria-label={`Move ${t.name} up`}
+                    onClick={() => void p.reorder(t.id, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    disabled={p.busy}
+                    aria-label={`Move ${t.name} down`}
+                    onClick={() => void p.reorder(t.id, 1)}
+                  >
+                    ↓
+                  </button>
+                </div>
+                {t.item_type === "phase" && (
+                  <button
+                    aria-label={`Toggle ${t.name}`}
+                    onClick={() => p.toggle(t.id)}
+                  >
+                    {p.collapsed.has(t.id) ? "▸" : "▾"}
+                  </button>
+                )}
+                <button
+                  className={"task-label " + (t.parent_id ? "indent" : "")}
+                  onClick={() => p.open(t)}
+                >
+                  <strong>{t.name}</strong>
+                  <small>
+                    {t.item_type === "phase"
+                      ? `${t.progress}% complete`
+                      : t.trade || "Unassigned"}
+                  </small>
+                </button>
+                {t.critical && <span className="badge">CRITICAL</span>}
+                {t.item_type === "phase" && (
+                  <button
+                    disabled={p.busy}
+                    aria-label={`Add activity to ${t.name}`}
+                    onClick={() => p.add(t.id)}
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+              <div
+                className="track"
+                style={{
+                  width: count * cell,
+                  backgroundSize: `${cell}px 100%`,
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (p.busy) return;
+                  const raw = e.dataTransfer.getData("application/fielddocs");
+                  if (!raw) return;
+                  try {
+                    const d = JSON.parse(raw);
+                    const pos = Math.floor(
+                      (e.clientX -
+                        e.currentTarget.getBoundingClientRect().left) /
+                        cell,
+                    );
+                    void p.move(d.id, shift(start, pos - (d.offset || 0)));
+                  } catch {}
+                }}
+              >
+                {x(today()) >= 0 && x(today()) <= count * cell && (
+                  <i className="todayline" style={{ left: x(today()) }} />
+                )}
+                {base && (
+                  <div
+                    className="baseline-bar"
+                    title={`Baseline ${base.start}–${base.finish}`}
+                    style={{
+                      left: x(base.start),
+                      width: (distance(base.start, base.finish) + 1) * cell,
+                    }}
+                  />
+                )}
+                <div
+                  className={`bar ${colour(t)} ${t.is_milestone ? "milestone" : ""}`}
+                  title={`${t.name}: ${t.start}–${displayedFinish}; ${t.float} work days float`}
+                  style={{
+                    left: x(t.start) + 2,
+                    width: t.is_milestone
+                      ? 14
+                      : Math.max(
+                          7,
+                          (distance(t.start, displayedFinish) + 1) * cell - 4,
+                        ),
+                  }}
+                  draggable={
+                    !p.busy && t.item_type === "task" && !gesture.current
+                  }
+                  onDragStart={(e) => {
+                    if (gesture.current) {
+                      e.preventDefault();
+                      return;
+                    }
+                    e.dataTransfer.setData(
+                      "application/fielddocs",
+                      JSON.stringify({
+                        id: t.id,
+                        offset: Math.max(
+                          0,
+                          Math.floor(
+                            (e.clientX -
+                              e.currentTarget.getBoundingClientRect().left) /
+                              cell,
+                          ),
+                        ),
+                      }),
+                    );
+                  }}
+                  onClick={() => {
+                    if (suppress.current) {
+                      suppress.current = false;
+                      return;
+                    }
+                    p.open(t);
+                  }}
+                >
+                  <span
+                    className="bar-progress"
+                    style={{ width: t.progress + "%" }}
+                  />
+                  <span className="bar-text">{!t.is_milestone && t.name}</span>
+                  {t.item_type === "task" && !t.is_milestone && (
+                    <span
+                      className="resize"
+                      role="slider"
+                      aria-label={`Duration ${t.name}`}
+                      aria-valuenow={
+                        preview?.id === t.id
+                          ? preview.duration
+                          : t.duration_work_days
+                      }
+                      aria-valuemin={1}
+                      aria-valuemax={10000}
+                      tabIndex={p.busy ? -1 : 0}
+                      draggable={false}
+                      onDragStart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onPointerDown={(e) => {
+                        if (p.busy) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        gesture.current = {
+                          id: t.id,
+                          x: e.clientX,
+                          start: t.start,
+                          duration: t.duration_work_days,
+                        };
+                        suppress.current = true;
+                      }}
+                      onPointerMove={pointerMove}
+                      onPointerUp={pointerEnd}
+                      onPointerCancel={() => {
+                        gesture.current = null;
+                        setPreview(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (
+                          !p.busy &&
+                          ["ArrowLeft", "ArrowRight"].includes(e.key)
+                        ) {
+                          e.preventDefault();
+                          void p.resize(
+                            t.id,
+                            Math.max(
+                              1,
+                              t.duration_work_days +
+                                (e.key === "ArrowRight" ? 1 : -1),
+                            ),
+                          );
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <svg
+          className="arrows"
+          aria-label="Dependency arrows"
+          style={{
+            left,
+            top: 64,
+            width: count * cell,
+            height: p.rows.length * rowHeight,
+          }}
+        >
+          <defs>
+            {["normal", "critical"].map((k) => (
+              <marker
+                key={k}
+                id={"fd-arrow-" + k}
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path
+                  d="M 0 0 L 10 5 L 0 10 z"
+                  fill={k === "critical" ? "#dc2626" : "#64748b"}
+                />
+              </marker>
+            ))}
+          </defs>
+          {p.links.map((l) => {
+            const i = p.rows.findIndex((t) => t.id === l.predecessor_id),
+              j = p.rows.findIndex((t) => t.id === l.successor_id);
+            if (i < 0 || j < 0) return null;
+            const a = p.rows[i],
+              b = p.rows[j],
+              critical =
+                a.critical &&
+                b.critical &&
+                addWork(a.finish, 1 + l.lag_work_days) === b.start;
+            const x1 = x(a.finish) + cell - 2,
+              x2 = x(b.start) + 2,
+              y1 = i * rowHeight + 28,
+              y2 = j * rowHeight + 28;
+            return (
+              <path
+                key={l.id}
+                d={`M${x1},${y1} H${x1 + 6} V${y2 - 20} H${x2 - 6} V${y2} H${x2}`}
+                stroke={critical ? "#dc2626" : "#64748b"}
+                strokeWidth={critical ? 2.5 : 1.5}
+                fill="none"
+                markerEnd={`url(#fd-arrow-${critical ? "critical" : "normal"})`}
+              />
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
 }
 
-const blank=(projectId:string,type:ItemType,parentId:string|null=null):Partial<Task>=>({project_id:projectId,name:"",trade:"",start_date:iso(new Date()),duration_work_days:1,progress:0,status:"not_started",is_milestone:false,notes:"",item_type:type,parent_id:parentId});
-const barColour=(t:Calculated)=>t.item_type==="phase"?"#172033":t.status==="complete"?"#16a34a":t.status==="on_hold"?"#64748b":t.critical?"#dc2626":"#2563eb";
-
-export default function SchedulePage(){
-  const [profile,setProfile]=useState<any>();
-  const [projects,setProjects]=useState<any[]>([]);
-  const [projectId,setProjectId]=useState("");
-  const [tasks,setTasks]=useState<Task[]>([]);
-  const [deps,setDeps]=useState<Dependency[]>([]);
-  const [view,setView]=useState<View>("gantt");
-  const [editing,setEditing]=useState<Partial<Task>|null>(null);
-  const [month,setMonth]=useState(new Date());
-  const [filter,setFilter]=useState("");
-  const [criticalOnly,setCriticalOnly]=useState(false);
-  const [collapsed,setCollapsed]=useState<Set<string>>(new Set());
-  const [loading,setLoading]=useState(true);
-  const [saving,setSaving]=useState(false);
-
-  useEffect(()=>{(async()=>{const p=await requireActiveStaff();if(!p)return;setProfile(p);let rows:any[]=[];if(p.role==="admin"){const r=await supabase.from("projects").select("*").order("project_name");if(r.error)return alert(r.error.message);rows=r.data||[]}else{const r=await supabase.from("project_staff").select("projects(*)").eq("staff_id",p.id);if(r.error)return alert(r.error.message);rows=r.data?.map((x:any)=>x.projects).filter(Boolean)||[]}setProjects(rows);if(rows[0])setProjectId(rows[0].id);setLoading(false)})()},[]);
-  async function load(id=projectId){if(!id)return;const[t,d]=await Promise.all([supabase.from("schedule_tasks").select("*").eq("project_id",id).order("sort_order"),supabase.from("schedule_dependencies").select("*").eq("project_id",id)]);if(t.error||d.error)return alert(t.error?.message||d.error?.message);setTasks((t.data||[]).map((x:any)=>({...x,item_type:x.item_type||"task",parent_id:x.parent_id||null})));setDeps(d.data||[])}
-  useEffect(()=>{load(projectId);setEditing(null)},[projectId]);
-
-  const allCalculated=useMemo(()=>calculateSchedule(tasks,deps),[tasks,deps]);
-  const phases=useMemo(()=>allCalculated.filter(t=>t.item_type==="phase").sort((a,b)=>a.sort_order-b.sort_order),[allCalculated]);
-  const visibleRows=useMemo(()=>{
-    const result:Calculated[]=[];const matches=(t:Calculated)=>!filter||`${t.name} ${t.trade||""}`.toLowerCase().includes(filter.toLowerCase());
-    phases.forEach(phase=>{const children=allCalculated.filter(t=>t.parent_id===phase.id&&t.item_type!=="phase").sort((a,b)=>a.sort_order-b.sort_order);const qualifying=children.filter(t=>matches(t)&&(!criticalOnly||t.critical));if(matches(phase)||qualifying.length){if(!criticalOnly||phase.critical)result.push(phase);if(!collapsed.has(phase.id))result.push(...qualifying)}});
-    const orphaned=allCalculated.filter(t=>t.item_type!=="phase"&&!t.parent_id).filter(t=>matches(t)&&(!criticalOnly||t.critical)).sort((a,b)=>a.sort_order-b.sort_order);return[...result,...orphaned];
-  },[allCalculated,phases,filter,criticalOnly,collapsed]);
-  const range=useMemo(()=>{const now=new Date(),dated=visibleRows.filter(t=>t.item_type!=="phase"||tasks.some(c=>c.parent_id===t.id));const min=dated.length?Math.min(...dated.map(t=>+t.start),+now):+addCalendarDays(now,-7),max=dated.length?Math.max(...dated.map(t=>+t.finish),+addCalendarDays(now,28)):+addCalendarDays(now,35),start=addCalendarDays(new Date(min),-3);return{start,count:calendarDistance(start,new Date(max))+5}},[visibleRows,tasks]);
-  const timeline=useMemo(()=>Array.from({length:range.count},(_,i)=>addCalendarDays(range.start,i)),[range]);
-  const criticalCount=allCalculated.filter(t=>t.item_type!=="phase"&&t.critical).length;
-
-  async function save(){if(!editing?.name?.trim())return alert("Enter a name.");setSaving(true);const isPhase=editing.item_type==="phase";const payload={project_id:projectId,name:editing.name.trim(),trade:isPhase?null:editing.trade||null,start_date:editing.start_date||iso(new Date()),duration_work_days:isPhase?0:editing.is_milestone?0:Number(editing.duration_work_days||1),progress:isPhase?0:Number(editing.progress||0),status:isPhase?"not_started":editing.status,is_milestone:isPhase?false:!!editing.is_milestone,notes:editing.notes||null,sort_order:editing.sort_order??tasks.length,item_type:editing.item_type||"task",parent_id:isPhase?null:editing.parent_id||null,created_by:profile?.id};const r=editing.id?await supabase.from("schedule_tasks").update(payload).eq("id",editing.id):await supabase.from("schedule_tasks").insert(payload);setSaving(false);if(r.error)return alert(r.error.message);setEditing(null);load()}
-  async function moveTask(id:string,newStart:Date){const task=tasks.find(t=>t.id===id);if(!task||task.item_type==="phase")return;if(deps.some(d=>d.successor_id===id)&&!confirm("This activity has a predecessor. Its dependency may move it later than this date. Continue?"))return;const r=await supabase.from("schedule_tasks").update({start_date:iso(newStart)}).eq("id",id);if(r.error)return alert(r.error.message);load()}
-  async function remove(id:string){const item=tasks.find(t=>t.id===id);if(!confirm(item?.item_type==="phase"?"Delete this phase? Its activities will become ungrouped.":"Delete this activity and its links?"))return;const r=await supabase.from("schedule_tasks").delete().eq("id",id);if(r.error)return alert(r.error.message);setEditing(null);load()}
-  async function setPredecessor(successor:string,predecessor:string){const existing=deps.filter(d=>d.successor_id===successor);if(existing.length){const r=await supabase.from("schedule_dependencies").delete().in("id",existing.map(d=>d.id));if(r.error)return alert(r.error.message)}if(predecessor){const r=await supabase.from("schedule_dependencies").insert({project_id:projectId,predecessor_id:predecessor,successor_id:successor,lag_work_days:0});if(r.error)return alert(r.error.message)}load()}
-  function startDrag(e:any,id:string){e.dataTransfer.setData("task",id)}
-  function drop(e:any,d:Date){e.preventDefault();const id=e.dataTransfer.getData("task");if(id)moveTask(id,d)}
-  function togglePhase(id:string){setCollapsed(previous=>{const next=new Set(previous);next.has(id)?next.delete(id):next.add(id);return next})}
-
-  if(loading)return <main className="schedule-shell">Loading schedule…</main>;
-  const first=new Date(month.getFullYear(),month.getMonth(),1,12),gridStart=addCalendarDays(first,-first.getDay()),monthDays=Array.from({length:42},(_,i)=>addCalendarDays(gridStart,i));
-  const calendarTasks=allCalculated.filter(t=>t.item_type!=="phase"&&(!criticalOnly||t.critical)&&(!filter||`${t.name} ${t.trade||""}`.toLowerCase().includes(filter.toLowerCase())));
-
-  return <main className="schedule-shell"><style>{css}</style>
-    <header className="schedule-head"><div><h1>Project Schedule</h1><p>Live Monday–Friday construction schedule</p></div><div className="project-actions"><label>Project<select value={projectId} onChange={e=>setProjectId(e.target.value)}>{projects.map(p=><option key={p.id} value={p.id}>{p.project_name}</option>)}</select></label><button onClick={()=>setEditing(blank(projectId,"phase"))}>+ Phase</button><button className="primary" onClick={()=>setEditing(blank(projectId,"task",phases[0]?.id||null))}>+ Activity</button></div></header>
-    <nav className="toolbar"><div className="tabs">{(["gantt","calendar","list"] as View[]).map(v=><button className={view===v?"active":""} onClick={()=>setView(v)} key={v}>{v[0].toUpperCase()+v.slice(1)}</button>)}</div><input className="search" placeholder="Filter activities or trades…" value={filter} onChange={e=>setFilter(e.target.value)}/><button className={`critical-filter ${criticalOnly?"selected":""}`} onClick={()=>setCriticalOnly(!criticalOnly)}>Critical path <b>{criticalCount}</b></button><div className="legend"><span className="normal-key">■ Normal</span><span className="critical-key">■ Critical · 0d float</span><span className="complete-key">■ Complete</span></div></nav>
-
-    {view==="gantt"&&<section className="gantt"><div className="gantt-grid" style={{gridTemplateColumns:`420px ${timeline.length*CELL}px`}}><div className="table-title fixed">Activity / Phase</div><div className="dates">{timeline.map((d,i)=><div key={i} className={`${!isWorkday(d)?"weekend":""} ${sameDay(d,new Date())?"today":""}`}><b>{d.toLocaleDateString("en-CA",{weekday:"short"}).slice(0,1)}</b><span>{d.getDate()}</span></div>)}</div>{visibleRows.map((t,i)=><div className="contents" key={t.id}><div className={`task-cell fixed ${t.item_type==="phase"?"phase-cell":""}`} onClick={()=>setEditing(t)}><div className="task-name">{t.item_type==="phase"&&<button className="collapse" onClick={e=>{e.stopPropagation();togglePhase(t.id)}}>{collapsed.has(t.id)?"▸":"▾"}</button>}<div className={t.parent_id?"indented":""}><strong>{t.item_type==="phase"?t.name:`${i+1}. ${t.name}`}</strong><small>{t.item_type==="phase"?`${tasks.filter(c=>c.parent_id===t.id).length} activities · ${iso(t.start)}–${iso(t.finish)}`:`${t.trade||"Unassigned"} · ${t.duration_work_days} days`}</small></div></div>{t.item_type!=="phase"&&(t.critical?<span className="critical-badge">CRITICAL · 0d</span>:<span className={`status ${t.status}`}>{statusLabels[t.status]}</span>)}</div><div className="track">{timeline.map((d,j)=><div key={j} className={`${!isWorkday(d)?"weekend":""} ${sameDay(d,new Date())?"today":""}`} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,d)}/>) }<div draggable={t.item_type!=="phase"} onDragStart={e=>startDrag(e,t.id)} onClick={()=>setEditing(t)} className={`bar ${t.item_type==="phase"?"phase-bar":""} ${t.is_milestone?"milestone":""}`} style={{left:calendarDistance(range.start,t.start)*CELL+(t.is_milestone?9:2),width:t.is_milestone?16:Math.max(30,(calendarDistance(t.start,t.finish)+1)*CELL-4),background:barColour(t)}}><i style={{width:`${t.item_type==="phase"?100:t.progress}%`}}/></div></div></div>)}</div>{!visibleRows.length&&<div className="empty">Add a phase and its first activity to begin.</div>}</section>}
-
-    {view==="calendar"&&<section className="calendar"><div className="calendar-nav"><button onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}>‹</button><h2>{month.toLocaleDateString("en-CA",{month:"long",year:"numeric"})}</h2><button onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}>›</button><button onClick={()=>setMonth(new Date())}>Today</button></div><div className="week-labels">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(x=><b key={x}>{x}</b>)}</div><div className="month-grid">{monthDays.map((d,i)=><div key={i} className={`calendar-day ${d.getMonth()!==month.getMonth()?"muted":""} ${sameDay(d,new Date())?"calendar-today":""}`} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,d)}><b>{d.getDate()}</b>{calendarTasks.filter(t=>d>=t.start&&d<=t.finish).map(t=><div draggable onDragStart={e=>startDrag(e,t.id)} onClick={()=>setEditing(t)} key={t.id} className={`calendar-event ${t.critical?"critical-event":""}`} style={{background:barColour(t)}}>{t.critical&&"⚠ "}{t.is_milestone?"◆ ":""}{t.name}</div>)}</div>)}</div></section>}
-
-    {view==="list"&&<section className="list"><table><thead><tr><th>Activity / Phase</th><th>Trade</th><th>Start</th><th>Finish</th><th>Days</th><th>Status</th><th>Total float</th></tr></thead><tbody>{visibleRows.map(t=><tr onClick={()=>setEditing(t)} key={t.id} className={t.item_type==="phase"?"phase-row":t.critical?"critical-row":""}><td>{t.parent_id&&<span className="tree-line">↳</span>}<strong>{t.name}</strong>{t.critical&&t.item_type!=="phase"&&<span className="critical-badge">CRITICAL</span>}</td><td>{t.item_type==="phase"?"—":t.trade||"—"}</td><td>{iso(t.start)}</td><td>{iso(t.finish)}</td><td>{t.item_type==="phase"?"—":t.duration_work_days}</td><td>{t.item_type==="phase"?"Summary":statusLabels[t.status]}</td><td>{t.item_type==="phase"?"—":t.critical?<strong className="critical-text">0 days</strong>:`${t.floatDays} days`}</td></tr>)}</tbody></table></section>}
-
-    {editing&&<div className="scrim" onMouseDown={e=>e.target===e.currentTarget&&setEditing(null)}><aside className="drawer"><div className="drawer-head"><div><h2>{editing.id?`Edit ${editing.item_type}`:`New ${editing.item_type}`}</h2><p>{editing.item_type==="phase"?"Phase dates roll up from its activities.":"Changes sync across every schedule view."}</p></div><button onClick={()=>setEditing(null)}>×</button></div><div className="form"><label>{editing.item_type==="phase"?"Phase name":"Activity name"}<input autoFocus value={editing.name||""} onChange={e=>setEditing({...editing,name:e.target.value})}/></label>{editing.item_type!=="phase"&&<><label>Phase<select value={editing.parent_id||""} onChange={e=>setEditing({...editing,parent_id:e.target.value||null})}><option value="">No phase</option>{phases.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Trade / Responsible<input value={editing.trade||""} onChange={e=>setEditing({...editing,trade:e.target.value})}/></label><div className="two"><label>Earliest start<input type="date" value={editing.start_date||""} onChange={e=>setEditing({...editing,start_date:e.target.value})}/></label><label>Work days<input type="number" min="1" disabled={editing.is_milestone} value={editing.is_milestone?0:editing.duration_work_days||1} onChange={e=>setEditing({...editing,duration_work_days:+e.target.value})}/></label></div>{editing.id&&<label>Predecessor<select value={deps.find(d=>d.successor_id===editing.id)?.predecessor_id||""} onChange={e=>setPredecessor(editing.id!,e.target.value)}><option value="">No predecessor</option>{tasks.filter(t=>t.item_type!=="phase"&&t.id!==editing.id).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>}<div className="two"><label>Status<select value={editing.status} onChange={e=>setEditing({...editing,status:e.target.value as Status})}>{Object.entries(statusLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Progress %<input type="number" min="0" max="100" value={editing.progress||0} onChange={e=>setEditing({...editing,progress:+e.target.value})}/></label></div><label className="check"><input type="checkbox" checked={!!editing.is_milestone} onChange={e=>setEditing({...editing,is_milestone:e.target.checked})}/> Milestone</label></>}<label>Notes<textarea rows={5} value={editing.notes||""} onChange={e=>setEditing({...editing,notes:e.target.value})}/></label></div><div className="drawer-actions">{editing.id&&<button className="danger" onClick={()=>remove(editing.id!)}>Delete</button>}<i/><button onClick={()=>setEditing(null)}>Cancel</button><button className="primary" disabled={saving} onClick={save}>{saving?"Saving…":"Save"}</button></div></aside></div>}
-  </main>
+type CalendarProps = {
+  rows: Activity[];
+  anchor: string;
+  setAnchor: (s: string) => void;
+  mode: "week" | "month";
+  setMode: (s: "week" | "month") => void;
+  open: (t: Task) => void;
+  add: (s: string) => void;
+  move: (id: string, s: string) => Promise<void>;
+  busy: boolean;
+};
+function Calendar(p: CalendarProps) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const first = p.mode === "month" ? p.anchor.slice(0, 7) + "-01" : p.anchor;
+  const monday = shift(first, -((day(first).getUTCDay() + 6) % 7));
+  const weeks = Array.from({ length: p.mode === "month" ? 6 : 1 }, (_, i) =>
+    shift(monday, i * 7),
+  );
+  function navigate(dir: number) {
+    if (p.mode === "week") p.setAnchor(shift(p.anchor, dir * 7));
+    else {
+      const d = day(p.anchor.slice(0, 7) + "-01");
+      d.setUTCMonth(d.getUTCMonth() + dir);
+      p.setAnchor(fmt(d));
+    }
+  }
+  return (
+    <section className="calendar">
+      <div className="calendar-tools">
+        <button aria-label="Previous period" onClick={() => navigate(-1)}>
+          ‹
+        </button>
+        <h2>
+          {p.mode === "month"
+            ? day(p.anchor).toLocaleDateString("en-CA", {
+                month: "long",
+                year: "numeric",
+                timeZone: "UTC",
+              })
+            : short(monday) + " – " + short(shift(monday, 6))}
+        </h2>
+        <button aria-label="Next period" onClick={() => navigate(1)}>
+          ›
+        </button>
+        <button onClick={() => p.setAnchor(today())}>Today</button>
+        <div className="tabs">
+          {(["week", "month"] as const).map((m) => (
+            <button
+              key={m}
+              className={m === p.mode ? "selected" : ""}
+              onClick={() => p.setMode(m)}
+            >
+              {m === "week" ? "Week" : "Month"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="calendar-scroll">
+        <div className="weekday">
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+            <b key={d}>{d}</b>
+          ))}
+        </div>
+        {weeks.map((start) => {
+          const placed = lanes(p.rows, start, shift(start, 6)),
+            max = placed.length
+              ? Math.max(...placed.map((e) => e.lane)) + 1
+              : 0,
+            limit = expanded.has(start) ? max : Math.min(max, 4);
+          return (
+            <div
+              className="calweek"
+              key={start}
+              style={{ height: 60 + Math.max(2, limit) * 30 }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (p.busy) return;
+                const data = e.dataTransfer.getData("application/fielddocs");
+                if (!data) return;
+                try {
+                  const drag = JSON.parse(data),
+                    rect = e.currentTarget.getBoundingClientRect(),
+                    col = Math.max(
+                      0,
+                      Math.min(
+                        6,
+                        Math.floor((e.clientX - rect.left) / (rect.width / 7)),
+                      ),
+                    );
+                  void p.move(drag.id, shift(start, col - (drag.offset || 0)));
+                } catch {}
+              }}
+            >
+              <div className="caldays">
+                {Array.from({ length: 7 }, (_, i) => shift(start, i)).map(
+                  (d) => (
+                    <button
+                      key={d}
+                      disabled={p.busy}
+                      aria-label={`Add activity ${d}`}
+                      className={`${!work(d) ? "weekend" : ""} ${d === today() ? "today" : ""} ${d.slice(0, 7) !== p.anchor.slice(0, 7) ? "muted" : ""}`}
+                      onClick={() => p.add(d)}
+                    >
+                      <span>{day(d).getUTCDate()}</span>
+                    </button>
+                  ),
+                )}
+              </div>
+              {placed
+                .filter((e) => e.lane < limit)
+                .map((e) => (
+                  <button
+                    key={e.task.id}
+                    className={`calendar-event ${colour(e.task)}`}
+                    title={`${e.task.name} · ${e.task.trade || "Unassigned"} · ${e.task.start}–${e.task.finish}`}
+                    style={{
+                      left: `calc(${(e.from / 7) * 100}% + 3px)`,
+                      width: `calc(${(e.span / 7) * 100}% - 6px)`,
+                      top: 34 + e.lane * 30,
+                    }}
+                    onClick={() => p.open(e.task)}
+                    draggable={!p.busy}
+                    onDragStart={(ev) => {
+                      const week = ev.currentTarget.parentElement!;
+                      const w = week.getBoundingClientRect().width / 7;
+                      const position =
+                        e.from +
+                        Math.max(
+                          0,
+                          Math.floor(
+                            (ev.clientX -
+                              ev.currentTarget.getBoundingClientRect().left) /
+                              w,
+                          ),
+                        );
+                      ev.dataTransfer.setData(
+                        "application/fielddocs",
+                        JSON.stringify({
+                          id: e.task.id,
+                          offset: distance(
+                            e.task.start,
+                            shift(start, position),
+                          ),
+                        }),
+                      );
+                    }}
+                  >
+                    {e.task.critical ? "! " : ""}
+                    {e.task.is_milestone ? "◆ " : ""}
+                    {e.task.name}
+                    {e.task.trade ? " · " + e.task.trade : ""}
+                  </button>
+                ))}
+              {max > 4 && (
+                <button
+                  className="more"
+                  style={{ top: 37 + limit * 30 }}
+                  onClick={() =>
+                    setExpanded((old) => {
+                      const n = new Set(old);
+                      n.has(start) ? n.delete(start) : n.add(start);
+                      return n;
+                    })
+                  }
+                >
+                  {expanded.has(start)
+                    ? "Show fewer"
+                    : `+ ${max - 4} more rows`}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
-const css=`
-.schedule-shell{max-width:1650px;margin:auto;padding:28px;color:#172033}.schedule-head,.project-actions,.toolbar,.tabs,.legend,.calendar-nav,.drawer-head,.drawer-actions,.task-name{display:flex;align-items:center}.schedule-head{justify-content:space-between;gap:20px;margin-bottom:18px}.schedule-head h1{margin:0;font-size:32px}.schedule-head p,.drawer-head p{margin:4px 0;color:#64748b}.project-actions{gap:10px;align-items:end}.project-actions label{font-weight:700}.project-actions select{display:block;min-width:260px}.schedule-shell button,.schedule-shell input,.schedule-shell select,.schedule-shell textarea{font:inherit}.schedule-shell button{cursor:pointer}.primary{border:0!important;background:#ff6b00!important;color:#111!important;font-weight:800}.project-actions button,.drawer-actions button{padding:11px 15px;border:1px solid #cbd5e1;background:white;border-radius:6px}.project-actions select,.search,.form input,.form select,.form textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box}.toolbar{gap:14px;background:white;border:1px solid #e2e8f0;border-radius:10px 10px 0 0;padding:10px 14px}.tabs{background:#eef2f7;padding:3px;border-radius:7px}.tabs button{border:0;background:transparent;padding:8px 15px;border-radius:5px;font-weight:700}.tabs .active{background:#172033;color:white}.search{width:250px}.critical-filter{padding:8px 11px;border:1px solid #fecaca;background:#fff7f7;color:#b91c1c;border-radius:6px;font-weight:700}.critical-filter.selected{background:#dc2626;color:white}.critical-filter b{background:#fff;color:#b91c1c;border-radius:999px;padding:1px 6px;margin-left:4px}.legend{margin-left:auto;gap:12px;font-size:12px}.critical-key,.critical-text{color:#dc2626}.complete-key{color:#16a34a}.gantt,.calendar,.list{background:white;border:1px solid #e2e8f0;border-top:0;overflow:auto;max-height:72vh}.gantt-grid{display:grid}.contents{display:contents}.fixed{position:sticky;left:0;z-index:4;background:white;border-right:1px solid #cbd5e1}.table-title{height:50px;padding:15px;box-sizing:border-box;font-weight:800;border-bottom:1px solid #cbd5e1}.dates{display:grid;grid-auto-flow:column;grid-auto-columns:${CELL}px;position:sticky;top:0;z-index:3;background:white}.dates>div{text-align:center;height:50px;border-right:1px solid #edf0f4;border-bottom:1px solid #cbd5e1;padding-top:4px;box-sizing:border-box}.dates b,.dates span,.task-cell strong,.task-cell small{display:block}.dates b,.dates span{font-size:11px}.weekend{background:#f4f6f8!important}.today{box-shadow:inset 2px 0 #ff6b00}.task-cell{height:58px;padding:7px 10px;box-sizing:border-box;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;cursor:pointer}.task-cell small{color:#64748b;margin-top:3px}.phase-cell{background:#f1f5f9;font-weight:800}.collapse{border:0;background:transparent;font-size:18px;padding:4px 7px}.indented{padding-left:30px}.track{height:58px;display:grid;grid-auto-flow:column;grid-auto-columns:${CELL}px;position:relative;border-bottom:1px solid #e5e7eb}.track>div:not(.bar){border-right:1px solid #edf0f4}.bar{position:absolute;top:17px;height:24px;border-radius:4px;cursor:grab;z-index:2;overflow:hidden;box-shadow:0 1px 2px #0002}.bar i{display:block;height:100%;background:#ffffff40}.phase-bar{top:21px;height:16px;border-radius:1px;cursor:pointer}.milestone{transform:rotate(45deg)}.status,.critical-badge{font-size:10px;font-weight:800;padding:4px 7px;border-radius:999px;white-space:nowrap}.not_started{background:#e2e8f0}.in_progress{background:#dbeafe;color:#1d4ed8}.complete{background:#dcfce7;color:#15803d}.on_hold{background:#f1f5f9;color:#475569}.critical-badge{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;margin-left:8px}.empty{padding:50px;text-align:center;color:#64748b}.calendar{padding:16px;max-height:none}.calendar-nav{gap:8px;margin-bottom:12px}.calendar-nav h2{min-width:230px;margin:0 8px}.calendar-nav button{padding:7px 11px;border:1px solid #cbd5e1;background:white;border-radius:5px}.week-labels,.month-grid{display:grid;grid-template-columns:repeat(7,1fr)}.week-labels b{text-align:center;padding:7px;color:#64748b}.calendar-day{min-height:125px;border-top:1px solid #e5e7eb;border-right:1px solid #e5e7eb;padding:6px;overflow:hidden}.calendar-day:nth-child(7n+1){border-left:1px solid #e5e7eb}.muted{background:#f8fafc;color:#94a3b8}.calendar-today>b{background:#ff6b00;border-radius:50%;padding:3px 6px}.calendar-event{color:white;border-radius:3px;padding:4px 6px;margin:4px 0;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab}.critical-event{box-shadow:0 0 0 2px #7f1d1d}.list table{width:100%;border-collapse:collapse}.list th,.list td{text-align:left;padding:12px;border-bottom:1px solid #e5e7eb}.list tr{cursor:pointer}.list tbody tr:hover{background:#f8fafc}.phase-row{background:#f1f5f9;font-weight:700}.critical-row{background:#fff7f7}.tree-line{color:#94a3b8;margin-right:10px}.scrim{position:fixed;inset:0;background:#0006;z-index:100;display:flex;justify-content:flex-end}.drawer{width:min(520px,100vw);height:100%;background:white;display:flex;flex-direction:column}.drawer-head{justify-content:space-between;padding:22px;border-bottom:1px solid #e5e7eb}.drawer-head h2{margin:0}.drawer-head button{font-size:28px;border:0;background:white}.form{padding:22px;display:grid;gap:16px;overflow:auto}.form label{font-weight:700}.form input,.form select,.form textarea{width:100%;display:block;margin-top:5px}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form .check{display:flex;gap:8px;align-items:center}.form .check input{width:auto;margin:0}.drawer-actions{margin-top:auto;padding:16px 22px;border-top:1px solid #e5e7eb;gap:10px}.drawer-actions i{flex:1}.danger{color:#b91c1c!important;border-color:#fecaca!important}@media(max-width:900px){.schedule-shell{padding:12px}.schedule-head{align-items:stretch;flex-direction:column}.project-actions{align-items:stretch;flex-wrap:wrap}.project-actions label{flex:1}.project-actions select{min-width:0;width:100%}.toolbar{flex-wrap:wrap}.search{width:100%}.legend{margin-left:0}.calendar-day{min-height:90px}.two{grid-template-columns:1fr}}
-`;
+type EditorProps = {
+  task: Task;
+  snapshot: Snapshot;
+  activities: Activity[];
+  busy: boolean;
+  stale: boolean;
+  saveError: string;
+  close: () => void;
+  remove: (t: Task) => Promise<void>;
+  save: (t: Task, l: Link[]) => Promise<void>;
+};
+function Editor(p: EditorProps) {
+  const [task, setTask] = useState({ ...p.task }),
+    [links, setLinks] = useState(
+      p.snapshot.links
+        .filter((l) => l.successor_id === p.task.id)
+        .map((l) => ({ ...l })),
+    ),
+    [error, setError] = useState("");
+  const phase = task.item_type === "phase",
+    current = p.activities.find((t) => t.id === task.id),
+    existing = p.snapshot.tasks.some((t) => t.id === task.id),
+    dirty =
+      JSON.stringify(task) !== JSON.stringify(p.task) ||
+      JSON.stringify(links) !==
+        JSON.stringify(
+          p.snapshot.links.filter((l) => l.successor_id === task.id),
+        );
+  function close() {
+    if (!p.busy && (!dirty || confirm("Discard this unsaved draft?")))
+      p.close();
+  }
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [dirty, p.busy]);
+  function update(change: Partial<Task>) {
+    setTask((old) => normalizeProgress(old, change));
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      const next = phase
+        ? {
+            ...task,
+            parent_id: null,
+            is_milestone: false,
+            progress: 0,
+            duration_work_days: 0,
+            status: "not_started" as Status,
+          }
+        : {
+            ...task,
+            duration_work_days: task.is_milestone ? 0 : task.duration_work_days,
+          };
+      validate(
+        [...p.snapshot.tasks.filter((t) => t.id !== task.id), next],
+        [
+          ...p.snapshot.links.filter((l) => l.successor_id !== task.id),
+          ...links,
+        ],
+      );
+      await p.save(next, links);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  return (
+    <div
+      className="overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
+    >
+      <aside
+        className="drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={phase ? "Edit phase" : "Edit activity"}
+      >
+        <div className="drawer-title">
+          <h2>
+            {existing ? "Edit" : "New"} {phase ? "phase" : "activity"}
+          </h2>
+          <button aria-label="Close editor" disabled={p.busy} onClick={close}>
+            ×
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="drawer-body">
+            {p.saveError && (
+              <p className="notice error" role="alert">
+                {p.saveError}
+              </p>
+            )}
+            {p.stale && (
+              <p className="notice warning">
+                Another session has changes. Close this draft and reload before
+                saving.
+              </p>
+            )}
+            {error && (
+              <p className="notice error" role="alert">
+                {error}
+              </p>
+            )}
+            {current && !phase && (
+              <section className="control-card">
+                <strong className={current.critical ? "red" : ""}>
+                  {current.critical
+                    ? "CRITICAL · 0 days float"
+                    : current.float + " work days total float"}
+                </strong>
+                <p>
+                  Scheduled: {current.start} → {current.finish}
+                </p>
+                <p>
+                  Controlling predecessor
+                  {current.controlling.length === 1 ? "" : "s"}:{" "}
+                  {current.controlling.length
+                    ? current.controlling
+                        .map(
+                          (id) => p.activities.find((t) => t.id === id)?.name,
+                        )
+                        .join(", ")
+                    : "Earliest-start date"}
+                </p>
+                {p.snapshot.baseline?.dates[task.id] && (
+                  <p>
+                    Finish variance:{" "}
+                    {workDistance(
+                      p.snapshot.baseline.dates[task.id].finish,
+                      current.finish,
+                    )}{" "}
+                    work days vs baseline
+                  </p>
+                )}
+              </section>
+            )}
+            <label>
+              Name
+              <input
+                autoFocus
+                required
+                value={task.name}
+                onChange={(e) => update({ name: e.target.value })}
+              />
+            </label>
+            {!phase && (
+              <>
+                <label>
+                  Phase
+                  <select
+                    value={task.parent_id || ""}
+                    onChange={(e) =>
+                      update({ parent_id: e.target.value || null })
+                    }
+                  >
+                    <option value="">Ungrouped</option>
+                    {p.snapshot.tasks
+                      .filter((t) => t.item_type === "phase")
+                      .sort(ordered)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Trade / responsible
+                  <input
+                    value={task.trade || ""}
+                    onChange={(e) => update({ trade: e.target.value })}
+                  />
+                </label>
+                <div className="two">
+                  <label>
+                    Earliest start
+                    <input
+                      type="date"
+                      required
+                      value={task.start_date}
+                      onChange={(e) => update({ start_date: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Work days
+                    <input
+                      type="number"
+                      min={1}
+                      max={10000}
+                      step={1}
+                      disabled={task.is_milestone}
+                      value={task.is_milestone ? 0 : task.duration_work_days}
+                      onChange={(e) =>
+                        update({ duration_work_days: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={task.is_milestone}
+                    onChange={(e) =>
+                      update({
+                        is_milestone: e.target.checked,
+                        duration_work_days: e.target.checked
+                          ? 0
+                          : Math.max(1, task.duration_work_days),
+                      })
+                    }
+                  />
+                  Milestone
+                </label>
+                <div className="two">
+                  <label>
+                    Status
+                    <select
+                      value={task.status}
+                      onChange={(e) =>
+                        update({ status: e.target.value as Status })
+                      }
+                    >
+                      {Object.entries(labels).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Progress %
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={task.progress}
+                      onChange={(e) =>
+                        update({ progress: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+                <fieldset>
+                  <legend>Finish-to-start predecessors</legend>
+                  <p>
+                    Lag uses Monday–Friday work days. Zero starts on the next
+                    workday. All links save with this activity.
+                  </p>
+                  {links.map((l, i) => (
+                    <div className="dependency" key={l.id}>
+                      <label>
+                        Activity
+                        <select
+                          aria-label="Predecessor activity"
+                          required
+                          value={l.predecessor_id}
+                          onChange={(e) =>
+                            setLinks(
+                              links.map((x, j) =>
+                                i === j
+                                  ? { ...x, predecessor_id: e.target.value }
+                                  : x,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="">Choose…</option>
+                          {p.snapshot.tasks
+                            .filter(
+                              (t) => t.id !== task.id && t.item_type === "task",
+                            )
+                            .sort(ordered)
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        Lag
+                        <input
+                          aria-label="Lag work days"
+                          type="number"
+                          min={0}
+                          max={10000}
+                          step={1}
+                          value={l.lag_work_days}
+                          onChange={(e) =>
+                            setLinks(
+                              links.map((x, j) =>
+                                i === j
+                                  ? {
+                                      ...x,
+                                      lag_work_days: Number(e.target.value),
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        aria-label="Remove predecessor"
+                        onClick={() =>
+                          setLinks(links.filter((_, j) => i !== j))
+                        }
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLinks([
+                        ...links,
+                        {
+                          id: crypto.randomUUID(),
+                          project_id: task.project_id,
+                          predecessor_id: "",
+                          successor_id: task.id,
+                          lag_work_days: 0,
+                        },
+                      ])
+                    }
+                  >
+                    + Predecessor
+                  </button>
+                </fieldset>
+              </>
+            )}
+            {phase && (
+              <p>
+                Dates and progress automatically summarize the activities
+                assigned to this phase.
+              </p>
+            )}
+            <label>
+              Notes / update explanation
+              <textarea
+                rows={4}
+                value={task.notes || ""}
+                onChange={(e) => update({ notes: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="drawer-footer">
+            {existing && (
+              <button
+                type="button"
+                className="danger"
+                disabled={p.busy || p.stale}
+                onClick={() => void p.remove(task)}
+              >
+                Delete
+              </button>
+            )}
+            <button type="button" disabled={p.busy} onClick={close}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="primary"
+              disabled={p.busy || p.stale}
+            >
+              {p.busy ? "Saving…" : "Save schedule"}
+            </button>
+          </div>
+        </form>
+      </aside>
+    </div>
+  );
+}
