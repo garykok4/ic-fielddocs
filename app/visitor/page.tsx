@@ -1,4 +1,5 @@
 "use client";
+import { notifySiteEvent } from "../../lib/project-work";
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -61,8 +62,10 @@ function VisitorPageContent() {
     const selectedProject = projects.find((p) => p.id === projectId);
     const cleanPhone = normalizePhone(phone);
 
+    const notificationRecordId = crypto.randomUUID();
     const { error } = await supabase.from("visitor_sign_ins").insert([
       {
+        id: notificationRecordId,
         project_id: projectId,
         visitor_name: visitorName,
         company_name: companyName,
@@ -80,40 +83,7 @@ function VisitorPageContent() {
       return;
     }
 
-   try {
-  if (selectedProject?.notification_email) {
-    const emailResponse = await fetch("/api/send-notification", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        to: selectedProject.notification_email,
-        subject: `New Visitor Sign-In - ${selectedProject.project_name}`,
-        html: `
-          <h2>New Visitor Sign-In</h2>
-          <p><strong>Project:</strong> ${selectedProject.project_name}</p>
-          <p><strong>Visitor:</strong> ${visitorName}</p>
-          <p><strong>Company:</strong> ${companyName || "Not listed"}</p>
-          <p><strong>Phone:</strong> ${cleanPhone || "Not listed"}</p>
-          <p><strong>Reason for Visit:</strong> ${reasonForVisit}</p>
-          <p><strong>Person Meeting:</strong> ${
-            personMeeting || "Not listed"
-          }</p>
-        `,
-      }),
-    });
-
-    if (!emailResponse.ok) {
-      const emailError = await emailResponse.text();
-      console.error("Visitor notification failed:", emailError);
-    }
-  } else {
-    console.warn("No notification email is configured for this project.");
-  }
-} catch (err) {
-  console.error("Visitor notification email failed:", err);
-}
+    await notifySiteEvent("visitor_sign_ins", notificationRecordId);
 
     alert("Visitor sign-in complete. Please report to site supervision.");
 
@@ -264,7 +234,9 @@ function VisitorPageContent() {
 
 export default function VisitorPage() {
   return (
-    <Suspense fallback={<main style={{ padding: 24 }}>Loading visitor sign-in...</main>}>
+    <Suspense
+      fallback={<main style={{ padding: 24 }}>Loading visitor sign-in...</main>}
+    >
       <VisitorPageContent />
     </Suspense>
   );

@@ -6,11 +6,16 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 export default function ProjectsPage() {
+  const [newName, setNewName] = useState("");
+  const [newAddress, setNewAddress] = useState("");
+  const [adding, setAdding] = useState(false);
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [editingProject, setEditingProject] = useState<any>(null);
-  const [notificationPrefs, setNotificationPrefs] = useState<Record<string, any>>({});
+  const [notificationPrefs, setNotificationPrefs] = useState<
+    Record<string, any>
+  >({});
 
   useEffect(() => {
     async function loadData() {
@@ -43,11 +48,13 @@ export default function ProjectsPage() {
 
     const { data, error } = await supabase
       .from("project_staff")
-      .select(`
+      .select(
+        `
         projects (
           *
         )
-      `)
+      `,
+      )
       .eq("staff_id", staffProfile.id);
 
     if (error) {
@@ -59,6 +66,33 @@ export default function ProjectsPage() {
       data?.map((row: any) => row.projects).filter(Boolean) || [];
 
     setProjects(assignedProjects);
+  }
+
+  async function addProject(e: React.FormEvent) {
+    e.preventDefault();
+    if (profile?.role !== "admin" || adding) return;
+    setAdding(true);
+    try {
+      const r = await supabase
+        .from("projects")
+        .insert([
+          {
+            project_name: newName.trim(),
+            address: newAddress,
+            city: "",
+            province: "ON",
+            status: "active",
+          },
+        ]);
+      if (r.error) throw r.error;
+      setNewName("");
+      setNewAddress("");
+      await fetchProjects(profile);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setAdding(false);
+    }
   }
 
   async function generateQrCode(projectId: string) {
@@ -116,7 +150,7 @@ export default function ProjectsPage() {
     }
 
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${projectName}"? This cannot be undone.`
+      `Are you sure you want to delete "${projectName}"? This cannot be undone.`,
     );
 
     if (!confirmed) return;
@@ -128,7 +162,7 @@ export default function ProjectsPage() {
 
     if (error) {
       alert(
-        "Could not delete project. This project may already have sign-ins, reports, orientations, visitors, or other records attached to it."
+        "Could not delete project. This project may already have sign-ins, reports, orientations, visitors, or other records attached to it.",
       );
       return;
     }
@@ -159,7 +193,7 @@ export default function ProjectsPage() {
   async function updateNotificationPref(
     projectId: string,
     field: "notify_orientations" | "notify_sign_ins" | "notify_visitors",
-    value: boolean
+    value: boolean,
   ) {
     if (!profile) return;
 
@@ -204,11 +238,48 @@ export default function ProjectsPage() {
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <h1>Projects</h1>
+      {profile?.role === "admin" && (
+        <details style={{ marginBottom: 20 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+            + Add project
+          </summary>
+          <form
+            onSubmit={addProject}
+            style={{ padding: 16, background: "white", marginTop: 10 }}
+          >
+            <label>
+              Project name
+              <input
+                required
+                maxLength={200}
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <label>
+              Address
+              <input
+                value={newAddress}
+                onChange={(e) => setNewAddress(e.target.value)}
+              />
+            </label>
+            <button disabled={adding || !newName.trim()}>
+              {adding ? "Adding…" : "Create project"}
+            </button>
+          </form>
+        </details>
+      )}
+      {profile?.role === "admin" && (
+        <p>
+          <a href="/admin/project-staff">Manage project team</a> ·{" "}
+          <a href="/admin/notifications">Notification delivery</a>
+        </p>
+      )}
 
       {profile && (
         <p>
-          Logged in as: <strong>{profile.full_name || profile.email}</strong> | Role:{" "}
-          <strong>{profile.role}</strong>
+          Logged in as: <strong>{profile.full_name || profile.email}</strong> |
+          Role: <strong>{profile.role}</strong>
         </p>
       )}
 
@@ -350,6 +421,16 @@ export default function ProjectsPage() {
       {projects.map((p) => (
         <section key={p.id} className="card">
           <h2>{p.project_name}</h2>
+          <a
+            href={`/projects/${p.id}`}
+            style={{
+              display: "inline-block",
+              marginBottom: 14,
+              fontWeight: 700,
+            }}
+          >
+            Open project workspace →
+          </a>
           <p>{p.address}</p>
           <p>
             {p.city}, {p.province}
@@ -369,7 +450,14 @@ export default function ProjectsPage() {
           </p>
 
           {profile?.role === "admin" && (
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                marginTop: 12,
+              }}
+            >
               <button onClick={() => setEditingProject(p)}>Edit Project</button>
 
               <button
@@ -416,7 +504,7 @@ export default function ProjectsPage() {
                   updateNotificationPref(
                     p.id,
                     "notify_orientations",
-                    e.target.checked
+                    e.target.checked,
                   )
                 }
                 style={{ width: 18, height: 18, marginTop: 2 }}
@@ -441,7 +529,7 @@ export default function ProjectsPage() {
                   updateNotificationPref(
                     p.id,
                     "notify_sign_ins",
-                    e.target.checked
+                    e.target.checked,
                   )
                 }
                 style={{ width: 18, height: 18, marginTop: 2 }}
@@ -465,7 +553,7 @@ export default function ProjectsPage() {
                   updateNotificationPref(
                     p.id,
                     "notify_visitors",
-                    e.target.checked
+                    e.target.checked,
                   )
                 }
                 style={{ width: 18, height: 18, marginTop: 2 }}
@@ -475,11 +563,16 @@ export default function ProjectsPage() {
           </div>
 
           <div style={{ marginTop: 16 }}>
-            <button onClick={() => generateQrCode(p.id)}>Generate QR Code</button>
+            <button onClick={() => generateQrCode(p.id)}>
+              Generate QR Code
+            </button>
 
             {qrCodes[p.id] && (
               <div style={{ marginTop: 16 }}>
-                <img src={qrCodes[p.id]} alt={`QR Code for ${p.project_name}`} />
+                <img
+                  src={qrCodes[p.id]}
+                  alt={`QR Code for ${p.project_name}`}
+                />
                 <p style={{ fontSize: 14 }}>
                   Sign-in URL: /sign-in?project={p.id}
                 </p>

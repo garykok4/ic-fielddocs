@@ -13,6 +13,11 @@ export type Task = {
   notes: string | null;
   item_type: "task" | "phase";
   parent_id: string | null;
+  stage?: "construction" | "preconstruction";
+  responsible_party?: string | null;
+  waiting_on?: string | null;
+  date_confidence?: "estimated" | "confirmed";
+  customer_visible?: boolean;
 };
 export type Link = {
   id: string;

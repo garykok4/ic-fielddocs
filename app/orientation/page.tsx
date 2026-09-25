@@ -1,4 +1,5 @@
 "use client";
+import { notifySiteEvent } from "../../lib/project-work";
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -65,8 +66,10 @@ function OrientationPageContent() {
 
     const cleanPhone = normalizePhone(phone);
 
+    const notificationRecordId = crypto.randomUUID();
     const { error } = await supabase.from("site_orientations").insert([
       {
+        id: notificationRecordId,
         project_id: projectId,
         worker_name: workerName,
         company_name: companyName,
@@ -80,35 +83,15 @@ function OrientationPageContent() {
     ]);
 
     if (error) {
-  alert(error.message);
-  return;
-}
+      alert(error.message);
+      return;
+    }
 
-const selectedProject = projects.find((p) => p.id === projectId);
+    await notifySiteEvent("site_orientations", notificationRecordId);
 
-if (selectedProject?.notification_email) {
-  const emailResponse = await fetch("/api/send-notification", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to: selectedProject.notification_email,
-      subject: `New Site Orientation - ${selectedProject.project_name}`,
-      html: `
-        <h2>New Site Orientation Completed</h2>
-        <p><strong>Project:</strong> ${selectedProject.project_name}</p>
-        <p><strong>Worker:</strong> ${workerName}</p>
-        <p><strong>Company:</strong> ${companyName}</p>
-        <p><strong>Phone:</strong> ${cleanPhone}</p>
-      `,
-    }),
-  });
-}
+    alert("Orientation complete. You may now use the site sign-in page.");
 
-alert("Orientation complete. You may now use the site sign-in page.");
-
-window.location.href = `/sign-in?project=${projectId}`;
+    window.location.href = `/sign-in?project=${projectId}`;
   }
 
   const checkboxStyle = {
@@ -235,12 +218,10 @@ window.location.href = `/sign-in?project=${projectId}`;
               vehicles, lifts, equipment, or machinery.
             </li>
             <li>
-              Do not remove or bypass guards, barricades, signage, locks,
-              tags, or other safety controls.
+              Do not remove or bypass guards, barricades, signage, locks, tags,
+              or other safety controls.
             </li>
-            <li>
-              Drug or alcohol impairment is strictly prohibited on site.
-            </li>
+            <li>Drug or alcohol impairment is strictly prohibited on site.</li>
             <li>
               Horseplay, fighting, harassment, violence, and unsafe behaviour
               are not permitted.
@@ -282,9 +263,16 @@ window.location.href = `/sign-in?project=${projectId}`;
             <li>Safety glasses or eye protection where required.</li>
             <li>Gloves suitable for the task being performed.</li>
             <li>Hearing protection where noise hazards are present.</li>
-            <li>Respiratory protection where dust, fumes, or vapours require it.</li>
-            <li>Fall protection where required by law, site rules, or task hazard.</li>
-            <li>Task-specific PPE required by the supervisor, employer, or site condition.</li>
+            <li>
+              Respiratory protection where dust, fumes, or vapours require it.
+            </li>
+            <li>
+              Fall protection where required by law, site rules, or task hazard.
+            </li>
+            <li>
+              Task-specific PPE required by the supervisor, employer, or site
+              condition.
+            </li>
           </ul>
         </div>
 
@@ -297,8 +285,8 @@ window.location.href = `/sign-in?project=${projectId}`;
           />
 
           <span>
-            I understand the required PPE for this project and agree to wear
-            the PPE required for my work.
+            I understand the required PPE for this project and agree to wear the
+            PPE required for my work.
           </span>
         </label>
       </section>
@@ -313,9 +301,15 @@ window.location.href = `/sign-in?project=${projectId}`;
             <li>Stop work immediately if safe to do so.</li>
             <li>Call 911 where emergency response is required.</li>
             <li>Notify site supervision as soon as possible.</li>
-            <li>Follow directions from site supervision and emergency responders.</li>
-            <li>Proceed to the designated muster point if evacuation is required.</li>
-            <li>Remain at the muster point until accounted for and released.</li>
+            <li>
+              Follow directions from site supervision and emergency responders.
+            </li>
+            <li>
+              Proceed to the designated muster point if evacuation is required.
+            </li>
+            <li>
+              Remain at the muster point until accounted for and released.
+            </li>
             <li>Do not re-enter the work area until authorized.</li>
           </ol>
         </div>

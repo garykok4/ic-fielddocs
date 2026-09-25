@@ -714,7 +714,7 @@
     size: landscape;
     margin: 12mm;
   }
-  body * {
+  body:has(.fd) * {
     visibility: hidden !important;
   }
   .fd .screen,
@@ -779,4 +779,64 @@
   .fd .rowname .task-label {
     font-size: 12px;
   }
+}
+
+.fd .toolbar {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.fd .toolbar label {
+  min-width: 190px;
+}
+.fd .toolbar a {
+  font-size: 14px;
+  color: #214f7c;
+}
+.fd .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 650px) {
+  .fd .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.fd .planning-dialog {
+  width: min(570px, calc(100vw - 32px));
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid #ccd5e1;
+  border-radius: 12px;
+  padding: 26px;
+  color: #26364b;
+  box-shadow: 0 15px 60px #0004;
+}
+.fd .planning-dialog::backdrop {
+  background: #17253680;
+}
+.fd .planning-dialog p {
+  line-height: 1.6;
+  margin: 14px 0;
+}
+.fd .planning-dialog label {
+  display: block;
+  margin: 14px 0;
+}
+.fd .planning-dialog .template-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.4;
+}
+.fd .template-check input {
+  width: 18px;
+  flex-shrink: 0;
+}
+.fd .planning-dialog .actions {
+  justify-content: flex-end;
+  margin-top: 22px;
 }
