@@ -11,6 +11,7 @@ import {
 } from "../../../lib/project-work";
 import { Activity, calculate, Snapshot, today } from "../../schedule/engine";
 import ScheduleWorkspace from "../../schedule/ScheduleWorkspace";
+import ProjectFiles from "../../../components/ProjectFiles";
 import TaskBoard from "../../../components/TaskBoard";
 import "../../../components/project-work.css";
 const tabs = [
@@ -18,6 +19,7 @@ const tabs = [
   ["preconstruction", "Preconstruction"],
   ["schedule", "Schedule"],
   ["tasks", "Tasks"],
+  ["files", "Files"],
   ["customer", "Customer summary"],
 ];
 export default function ProjectWorkspace() {
@@ -330,6 +332,13 @@ export default function ProjectWorkspace() {
               profile={profile}
               projectId={id}
               onChange={() => void refresh()}
+            />
+          )}
+          {tab === "files" && (
+            <ProjectFiles
+              key={id}
+              projectId={id}
+              projectName={project?.project_name || "Project"}
             />
           )}
           {tab === "customer" && (

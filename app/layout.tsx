@@ -27,6 +27,7 @@ export default function RootLayout({
     "/sign-in",
     "/orientation",
     "/visitor",
+    "/contractor-files",
   ].includes(pathname);
   useEffect(() => {
     setMobile(false);
