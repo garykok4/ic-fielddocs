@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../../../lib/dates";
 
 import { requireActiveStaff } from "../../../lib/auth";
 
@@ -113,7 +114,7 @@ export default function OrientationHistoryPage() {
 
           <p>
             <strong>Completed:</strong>{" "}
-            {new Date(r.completed_at).toLocaleString()}
+            {readableDateTime(r.completed_at)}
           </p>
 
           <hr />

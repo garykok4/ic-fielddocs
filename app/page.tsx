@@ -1,4 +1,6 @@
 "use client";
+import WorkDayCountdown from "../components/WorkDayCountdown";
+import {readableDate,readableDateTime} from "../lib/dates";
 import { useEffect, useRef, useState } from "react";
 import { requireActiveStaff } from "../lib/auth";
 import { supabase } from "../lib/supabase";
@@ -110,10 +112,10 @@ export default function Dashboard() {
       .filter((t) => !dueToday.includes(t) && !blocked.includes(t))
       .map((t) => ({ task: t, label: "Upcoming", type: "" })),
   ];
-  const projectName = (id: string) =>
-    cards.find((c) => c.project.id === id)?.project.project_name || "Project";
+  const projectName = (id: string | null) =>
+    id ? cards.find((c) => c.project.id === id)?.project.project_name || "Project" : "General task";
   const taskHref = (t: ProjectTask) =>
-    `/projects/${t.project_id}?tab=tasks&task=${t.id}`;
+    t.project_id ? `/projects/${t.project_id}?tab=tasks&task=${t.id}` : `/tasks?task=${t.id}`;
   return (
     <main className="pw dashboard">
       <header className="dash-heading">
@@ -223,9 +225,8 @@ export default function Dashboard() {
                       <span
                         className={t.due_date && t.due_date < now ? "red" : ""}
                       >
-                        {t.due_date === now
-                          ? "Today"
-                          : t.due_date || "No due date"}
+                        {readableDate(t.due_date) || "No due date"}
+                        <WorkDayCountdown due={t.due_date} status={t.status}/>
                       </span>
                     </a>
                   ))
@@ -248,7 +249,8 @@ export default function Dashboard() {
                       <strong>{task.title}</strong>
                       <small>
                         {projectName(task.project_id)} ·{" "}
-                        {task.due_date || "No date set"}
+                        {readableDate(task.due_date) || "No date set"}
+                        <WorkDayCountdown due={task.due_date} status={task.status}/>
                       </small>
                     </a>
                   ))
@@ -406,7 +408,7 @@ export default function Dashboard() {
                         </strong>
                         {milestone && (
                           <span>
-                            {milestone.finish} ·{" "}
+                            {readableDate(milestone.finish)} ·{" "}
                             {milestone.date_confidence || "estimated"}
                           </span>
                         )}

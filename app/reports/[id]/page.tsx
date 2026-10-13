@@ -1,4 +1,6 @@
 "use client";
+import {readableDate,readableDateTime} from "../../../lib/dates";
+import ReportContent from "../../../components/reports/ReportContent";
 
 import { requireActiveStaff } from "../../../lib/auth";
 import { useEffect, useState } from "react";
@@ -41,7 +43,8 @@ export default function ReportDetailPage() {
   async function fetchReport(profile: any) {
     const { data, error } = await supabase
       .from("daily_reports")
-      .select(`
+      .select(
+        `
         *,
         projects (
           project_name,
@@ -49,7 +52,8 @@ export default function ReportDetailPage() {
           city,
           province
         )
-      `)
+      `,
+      )
       .eq("id", params.id)
       .single();
 
@@ -90,31 +94,52 @@ export default function ReportDetailPage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <button onClick={() => window.print()}>
-        Print / Save PDF
-      </button>
+      <div className="report-print-hide">
+        <a href={`/reports/${report.id}/edit`} style={{ marginRight: 16 }}>
+          Edit report
+        </a>
+        <button onClick={() => window.print()}>Print / Save PDF</button>
+      </div>
 
       <h1>Daily Site Report</h1>
 
-      <section className="card">
+      <section className="card report-print-sheet">
         <h2>{report.projects?.project_name}</h2>
-        <p><strong>Address:</strong> {report.projects?.address}</p>
-        <p><strong>Location:</strong> {report.projects?.city}, {report.projects?.province}</p>
-        <p><strong>Report Date:</strong> {report.report_date}</p>
+        <p>
+          <strong>Address:</strong> {report.projects?.address}
+        </p>
+        <p>
+          <strong>Location:</strong> {report.projects?.city},{" "}
+          {report.projects?.province}
+        </p>
+        <p>
+          <strong>Report Date:</strong> {readableDate(report.report_date)}
+        </p>
 
         <hr />
 
-        <p><strong>Weather:</strong></p>
+        <p>
+          <strong>Weather:</strong>
+        </p>
         <p>{report.weather || "—"}</p>
 
-        <p><strong>Work Completed:</strong></p>
-        <p>{report.work_completed || "—"}</p>
+        <p>
+          <strong>Work Completed:</strong>
+        </p>
+        <ReportContent
+          value={report.rich_text?.work_completed}
+          text={report.work_completed}
+        />
 
-        <p><strong>Labour on Site:</strong></p>
-        <p>{report.labour || "—"}</p>
+        <p>
+          <strong>Labour on Site:</strong>
+        </p>
+        <ReportContent value={report.rich_text?.labour} text={report.labour} />
 
-        <p><strong>Issues / Delays / Notes:</strong></p>
-        <p>{report.issues || "—"}</p>
+        <p>
+          <strong>Issues / Delays / Notes:</strong>
+        </p>
+        <ReportContent value={report.rich_text?.issues} text={report.issues} />
 
         <hr />
 

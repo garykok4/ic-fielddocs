@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../../../lib/dates";
 
 import { requireActiveStaff } from "../../../lib/auth";
 import { useEffect, useState } from "react";
@@ -164,7 +165,7 @@ export default function SignInHistoryPage() {
           </p>
 
           <p>
-            <strong>Date:</strong> {r.sign_in_date}
+            <strong>Date:</strong> {readableDate(r.sign_in_date)}
           </p>
         </section>
       ))}

@@ -1,4 +1,6 @@
 "use client";
+import WorkDayCountdown from "../components/WorkDayCountdown";
+import {readableDate,readableDateTime} from "../lib/dates";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import {
@@ -60,6 +62,8 @@ export default function TaskBoard({
       if (projectId) q = q.eq("project_id", projectId);
       const r = await q;
       if (r.error) throw r.error;
+      const generalTeam = await supabase.rpc("fielddocs_general_task_team");
+      if (generalTeam.error) throw generalTeam.error;
       const teams = await Promise.all(
         projects.map(async (p) => {
           const r = await supabase.rpc("fielddocs_project_team", {
@@ -84,7 +88,7 @@ export default function TaskBoard({
           setDue(requestedDue!);
       }
       setPeople(
-        Array.from(new Map(teams.flat().map((p) => [p.id, p])).values()),
+        Array.from(new Map([...teams.flat(), ...(generalTeam.data || [])].map((p) => [p.id, p])).values()),
       );
     } catch (e) {
       if (seq === loadId.current) setError((e as Error).message);
@@ -113,10 +117,10 @@ export default function TaskBoard({
     (async () => {
       try {
         const [t, s, c] = await Promise.all([
-          supabase.rpc("fielddocs_project_team", {
+          editing.project_id ? supabase.rpc("fielddocs_project_team", {
             p_project: editing.project_id,
-          }),
-          supabase.rpc("schedule_v4_read", { p_project: editing.project_id }),
+          }) : supabase.rpc("fielddocs_general_task_team"),
+          editing.project_id ? supabase.rpc("schedule_v4_read", { p_project: editing.project_id }) : Promise.resolve({data:{tasks:[]},error:null}),
           isNew
             ? Promise.resolve({ data: [], error: null })
             : supabase
@@ -187,15 +191,14 @@ export default function TaskBoard({
     setEditing({ ...t });
   }
   function create() {
-    const p = projectId || projectFilter || projects[0]?.id;
-    if (!p) return;
+    const p = projectId || (projectFilter && projectFilter !== "general" ? projectFilter : null);
     open(
       {
         id: crypto.randomUUID(),
         project_id: p,
         title: "",
         description: "",
-        assignee_id: null,
+        assignee_id: p ? null : profile.id,
         due_date: null,
         priority: "normal",
         status: "todo",
@@ -238,6 +241,37 @@ export default function TaskBoard({
       lock.current = false;
       setBusy(false);
     }
+  }
+  async function toggleComplete(t: ProjectTask) {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const status = t.status === "done" ? "todo" : "done";
+      const result = await supabase.rpc("fielddocs_task_save", {
+        p_task: { ...t, status }, p_revision: t.revision,
+      });
+      if (result.error) throw result.error;
+      setTasks(current => current.map(row => row.id === t.id ? result.data : row));
+      onChange?.();
+      setNotice(status === "done"
+        ? `Completed: ${t.title}. Find it under Status → Done to reopen it.${t.activity_id ? " The linked schedule activity is unchanged." : ""}`
+        : `Reopened: ${t.title}.`);
+    } catch (e) {
+      setError((e as Error).message);
+      await load();
+      setError((e as Error).message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  function completionControl(t: ProjectTask) {
+    return <input type="checkbox" className="task-completion" checked={t.status === "done"}
+      disabled={busy} aria-label={`${t.status === "done" ? "Reopen" : "Complete"} ${t.title}`}
+      onChange={() => void toggleComplete(t)} />;
   }
   async function remove() {
     if (
@@ -293,11 +327,11 @@ export default function TaskBoard({
   const person = (id: string | null) =>
     people.find((p) => p.id === id)?.full_name ||
     (id ? "Former / unavailable staff" : "Unassigned");
-  const projectName = (id: string) =>
-    projects.find((p) => p.id === id)?.project_name || "Project";
+  const projectName = (id: string | null) =>
+    id ? projects.find((p) => p.id === id)?.project_name || "Project" : "General task";
   const filtered = tasks.filter(
     (t) =>
-      (!projectFilter || t.project_id === projectFilter) &&
+      (!projectFilter || (projectFilter === "general" ? !t.project_id : t.project_id === projectFilter)) &&
       (scope === "all" ||
         (scope === "mine" ? t.assignee_id === profile.id : !t.assignee_id)) &&
       (status === "all" ||
@@ -331,7 +365,7 @@ export default function TaskBoard({
           <button className="secondary" onClick={() => void load()}>
             Refresh
           </button>
-          <button disabled={!projects.length} onClick={create}>
+          <button onClick={create}>
             + Add task
           </button>
         </div>
@@ -349,7 +383,7 @@ export default function TaskBoard({
         </div>
         <div className="metric">
           <strong className="red">{tasks.filter(overdue).length}</strong>
-          <span>Overdue · accessible projects</span>
+          <span>Overdue · accessible tasks</span>
         </div>
         <div className="metric">
           <strong>{tasks.filter((t) => t.status === "blocked").length}</strong>
@@ -389,7 +423,8 @@ export default function TaskBoard({
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
             >
-              <option value="">All projects</option>
+              <option value="">All tasks</option>
+              <option value="general">No project — General tasks</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.project_name}
@@ -468,6 +503,7 @@ export default function TaskBoard({
           <table>
             <thead>
               <tr>
+                <th className="completion-column"><span className="completion-heading">Done</span></th>
                 <th>Task</th>
                 {!projectId && <th>Project</th>}
                 <th>Assigned to</th>
@@ -478,7 +514,8 @@ export default function TaskBoard({
             </thead>
             <tbody>
               {filtered.map((t) => (
-                <tr key={t.id}>
+                <tr key={t.id} className={t.status === "done" ? "completed-task" : ""}>
+                  <td className="completion-column">{completionControl(t)}</td>
                   <td>
                     <button className="text" onClick={() => open(t)}>
                       {t.title}
@@ -489,15 +526,15 @@ export default function TaskBoard({
                   </td>
                   {!projectId && (
                     <td>
-                      <a href={`/projects/${t.project_id}?tab=tasks`}>
+                      <a href={t.project_id ? `/projects/${t.project_id}?tab=tasks` : `/tasks?task=${t.id}`}>
                         {projectName(t.project_id)}
                       </a>
                     </td>
                   )}
                   <td>{person(t.assignee_id)}</td>
                   <td className={overdue(t) ? "red" : ""}>
-                    {t.due_date || "No date"}
-                    {overdue(t) && <div>Overdue</div>}
+                    {readableDate(t.due_date) || "No date"}
+                    <WorkDayCountdown due={t.due_date} status={t.status}/>
                   </td>
                   <td>
                     <span
@@ -538,14 +575,15 @@ export default function TaskBoard({
               {filtered
                 .filter((t) => t.status === key)
                 .map((t) => (
-                  <div className="taskcard" key={t.id}>
+                  <div className={`taskcard ${t.status === "done" ? "completed-task" : ""}`} key={t.id}>
+                    {completionControl(t)}
                     <button className="text" onClick={() => open(t)}>
                       {t.title}
                     </button>
                     <p>{person(t.assignee_id)}</p>
                     <p className={overdue(t) ? "red" : ""}>
-                      {t.due_date || "No due date"}
-                      {overdue(t) ? " · Overdue" : ""}
+                      {readableDate(t.due_date) || "No due date"}
+                      <WorkDayCountdown due={t.due_date} status={t.status}/>
                     </p>
                     <span className="badge">{t.priority}</span>
                   </div>
@@ -600,16 +638,17 @@ export default function TaskBoard({
                     Project
                     <select
                       aria-label="Project"
-                      value={editing.project_id}
+                      value={editing.project_id || ""}
                       onChange={(e) =>
                         setEditing({
                           ...editing,
-                          project_id: e.target.value,
-                          assignee_id: null,
+                          project_id: e.target.value || null,
+                          assignee_id: e.target.value ? null : profile.id,
                           activity_id: null,
                         })
                       }
                     >
+                      <option value="">No project — General task</option>
                       {projects.map((p) => (
                         <option value={p.id} key={p.id}>
                           {p.project_name}
@@ -657,6 +696,8 @@ export default function TaskBoard({
                         })
                       }
                     />
+                    <span>{readableDate(editing.due_date)}</span>
+                    <WorkDayCountdown due={editing.due_date} status={editing.status}/>
                   </label>
                   <label>
                     Status
@@ -758,7 +799,7 @@ export default function TaskBoard({
                   <div className="comment" key={c.id}>
                     <small>
                       {c.author_name} ·{" "}
-                      {new Date(c.created_at).toLocaleString()}
+                      {readableDateTime(c.created_at)}
                     </small>
                     {c.body}
                   </div>

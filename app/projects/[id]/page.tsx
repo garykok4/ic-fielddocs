@@ -1,4 +1,6 @@
 "use client";
+import WorkDayCountdown from "../../../components/WorkDayCountdown";
+import {readableDate,readableDateTime} from "../../../lib/dates";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { requireActiveStaff } from "../../../lib/auth";
@@ -206,7 +208,7 @@ export default function ProjectWorkspace() {
                       <p>
                         Target mobilization:{" "}
                         <strong>
-                          {gate?.finish || "Add a mobilization milestone"}
+                          {readableDate(gate?.finish) || "Add a mobilization milestone"}
                         </strong>
                       </p>
                       <p className="muted">
@@ -227,7 +229,7 @@ export default function ProjectWorkspace() {
                   <h2>Project controls</h2>
                   <p>
                     Scheduled finish:{" "}
-                    <strong>{finish || "No activities yet"}</strong>
+                    <strong>{readableDate(finish) || "No activities yet"}</strong>
                   </p>
                   <p>
                     Saved baseline:{" "}
@@ -277,7 +279,7 @@ export default function ProjectWorkspace() {
                             <td>
                               {a.responsible_party || a.trade || "Unassigned"}
                             </td>
-                            <td>{a.finish}</td>
+                            <td>{readableDate(a.finish)}</td>
                             <td>{a.waiting_on || "—"}</td>
                           </tr>
                         ))}
@@ -302,8 +304,9 @@ export default function ProjectWorkspace() {
                       .slice(0, 6)
                       .map((t) => (
                         <li key={t.id}>
-                          {t.title} — {t.due_date || "No due date"}
+                          {t.title} — {readableDate(t.due_date) || "No due date"}
                           {t.status === "blocked" ? " · Blocked" : ""}
+                          <WorkDayCountdown due={t.due_date} status={t.status}/>
                         </li>
                       ))}
                   </ul>
@@ -353,7 +356,7 @@ export default function ProjectWorkspace() {
                 <div>
                   <h2>Path to construction</h2>
                   <p className="muted">
-                    Prepared {today()} · Dates reflect the current dependency
+                    Prepared {readableDate(today())} · Dates reflect the current dependency
                     schedule.
                   </p>
                 </div>
@@ -409,7 +412,7 @@ export default function ProjectWorkspace() {
                               {a.responsible_party || a.trade || "To confirm"}
                             </td>
                             <td>
-                              {a.start} → {a.finish}
+                              {readableDate(a.start)} → {readableDate(a.finish)}
                               <div className="muted">
                                 {a.date_confidence === "confirmed"
                                   ? "Confirmed"

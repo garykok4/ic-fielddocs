@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../lib/dates";
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { supabase } from "../lib/supabase";
@@ -638,7 +639,7 @@ export default function ProjectFiles({
                                     >
                                       {r.issue_status}
                                     </span>
-                                    <small>{r.issue_date}</small>
+                                    <small>{readableDate(r.issue_date)}</small>
                                   </>
                                 ) : (
                                   "No revision uploaded"
@@ -650,9 +651,7 @@ export default function ProjectFiles({
                                     {d.publisher_name || "Published"}
                                     <small>
                                       {d.published_at
-                                        ? new Date(
-                                            d.published_at,
-                                          ).toLocaleString()
+                                        ? readableDateTime(d.published_at)
                                         : ""}
                                     </small>
                                   </>
@@ -735,7 +734,7 @@ export default function ProjectFiles({
                             {r ? ` · Rev ${r.label}` : ""}
                           </strong>
                           <div>{a.actor_name}</div>
-                          <time>{new Date(a.created_at).toLocaleString()}</time>
+                          <time>{readableDateTime(a.created_at)}</time>
                           {d && (
                             <button
                               className="files-secondary"
@@ -1135,12 +1134,12 @@ export default function ProjectFiles({
                       </td>
                       <td>
                         {r.issue_status}
-                        <small>{r.issue_date}</small>
+                        <small>{readableDate(r.issue_date)}</small>
                       </td>
                       <td>
                         {r.uploader_name}
                         <small>
-                          {new Date(r.uploaded_at).toLocaleString()}
+                          {readableDateTime(r.uploaded_at)}
                         </small>
                       </td>
                       <td>

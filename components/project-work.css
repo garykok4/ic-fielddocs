@@ -332,3 +332,14 @@
     margin: 14mm;
   }
 }
+
+/* Quick completion controls stay visible in both task views. */
+.pw .task-completion{appearance:auto;width:19px;height:19px;min-width:19px;margin:0;accent-color:#159b78;cursor:pointer;vertical-align:middle}
+.pw .task-completion:disabled{cursor:wait;opacity:.5}
+.pw .completion-column{width:48px;text-align:center;padding:10px 8px}
+.pw .completion-heading{font-size:11px;color:#64748b}
+.pw .completed-task .text{text-decoration:line-through;color:#778395}
+.pw .taskcard .task-completion{margin-right:9px}
+.pw .taskboard .tablewrap{border:1px solid #e2e8f0;border-radius:6px}
+.pw .taskboard th{background:#f8fafc;font-size:12px;font-weight:500;color:#526174}
+.pw .taskboard tbody tr:hover{background:#f6f9fc}

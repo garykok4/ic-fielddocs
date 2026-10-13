@@ -840,3 +840,44 @@
   justify-content: flex-end;
   margin-top: 22px;
 }
+
+.fd .ontario-calendar-info{margin:14px 0;padding:12px 16px;background:#fff8ed;border:1px solid #efd9b7;border-radius:9px;font-size:13px;color:#63451c}.fd .ontario-calendar-info summary{cursor:pointer;font-weight:700}.fd .ontario-calendar-info p{max-width:900px;line-height:1.5}.fd .ontario-calendar-info input{width:110px;margin:8px}.fd .holiday-register{max-height:330px;overflow:auto;max-width:660px}.fd .holiday-register table{background:white}.fd .date-head span.holiday,.fd .caldays button.holiday{background:#fff0d1;color:#754100}.fd .caldays .holiday-name{display:block;max-width:100%;font-size:10px;line-height:12px;font-weight:700;padding:2px 3px;white-space:normal;text-align:left;overflow-wrap:anywhere}.fd .holiday-band{position:absolute;top:0;bottom:0;background:#f7b64b24;pointer-events:none}.fd .workday-countdown{font-size:11px!important;color:#49616e}.fd .date-head span.holiday{border-top:3px solid #d18a24}.fd .caldays button{padding-bottom:62px}.fd .ontario-calendar-info table td,.fd .ontario-calendar-info table th{padding:6px 10px}@media print{.fd .ontario-calendar-info{display:none}}
+
+.fd .caldays button{flex-direction:column;justify-content:flex-start;gap:2px}.fd .caldays button.holiday.muted{background:#fff5e5;color:#8a632e}
+
+/* Compact planning grid inspired by the supplied reference. */
+.fd{max-width:none;padding:22px;--line:#e2e8f2}
+.fd .gantt-controls{display:flex;align-items:center;gap:12px;padding:8px 0;color:#718096;font-size:12px}
+.fd .gantt-controls span{flex:1}
+.fd .gantt-controls button{font-size:12px;padding:6px 10px;font-weight:500}
+.fd .gantt{border-radius:3px;max-height:76vh}
+.fd .gantt .title{padding:0 8px;font-size:11px;font-weight:500;gap:0}
+.fd .name-heading{flex:1;padding-left:20px}
+.fd .gantt-date-cell{display:flex;align-items:center;justify-content:center;flex:0 0 105px;width:105px;height:100%;border-left:1px solid #e2e8f2;font-size:11px;font-weight:400;white-space:nowrap;color:#34445c}
+.fd .gantt .rowname{padding:0 8px;gap:3px}
+.fd .gantt .task-label strong{font-size:12px;font-weight:400}
+.fd .gantt .task-label small{display:none}
+.fd .gantt .task-label.indent{padding-left:12px}
+.fd .gantt .order button{padding:1px 3px;font-size:10px;color:#7c8ba1}
+.fd .critical-dot{flex:0 0 6px;width:6px;height:6px;background:#dc3545;border-radius:50%;margin-right:4px}
+.fd .gantt-row:hover .track,.fd .gantt-row:hover .rowname{background-color:#eef4fb}
+.fd .month-head{background:#fafbfd}
+.fd .month-head span{font-weight:500}
+.fd .weekend-band{position:absolute;inset:0 auto 0 auto;background:#f0f3f9;pointer-events:none}
+.fd .gantt .bar{top:12px;height:14px;border-radius:2px;border:1px solid #209da6;background:#39c2cc}
+.fd .gantt .bar.critical{background:#ef6573;border-color:#d53246}
+.fd .gantt .bar.complete{background:#5ac99f;border-color:#2ca87b}
+.fd .gantt .bar.held{background:#a5b1c5;border-color:#7b8ba8}
+.fd .gantt .bar.phase{height:9px;top:15px;background:#536c93;border-color:#3e557c}
+.fd .gantt .bar.milestone{top:12px;width:14px;height:14px}
+.fd .gantt .bar-text{display:none}
+.fd .gantt .baseline-bar{top:31px;height:3px}
+.fd .gantt .todayline{width:1px;background:#ed4d6d}
+.fd .gantt .resize{width:8px;background:transparent}
+.fd .gantt .bar:hover .resize,.fd .gantt .resize:focus-visible{background:#0003}
+.fd .timeline-task-name{position:absolute;z-index:3;background:transparent;border:0;padding:0 3px;font-size:11px;font-weight:400;line-height:20px;max-width:240px;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.fd .timeline-task-name:hover{background:white!important}
+@media(max-width:799px){.fd .gantt-date-cell{display:none}.fd .gantt-controls span{display:none}.fd{padding:12px}.fd .gantt-controls{justify-content:space-between}}
+@media print{.fd .gantt-controls{display:none}}
+
+.fd .schedule-normal-key{color:#209da6}

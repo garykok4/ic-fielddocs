@@ -1,0 +1,2 @@
+import {COUNTDOWN_HELP,dueCountdown,holidayOn,isWorkDay} from '../lib/work-calendar';
+export default function WorkDayCountdown({due,status}:{due?:string|null;status?:string}){return <small className="workday-countdown" title={COUNTDOWN_HELP} style={{display:'block',fontSize:12,marginTop:3}}>{dueCountdown(due,status)}{due&&!['done','complete'].includes(status||'')&&!isWorkDay(due)&&<span style={{display:'block'}}>Due on {holidayOn(due)?.name||'a weekend'} · non-working day</span>}</small>;}

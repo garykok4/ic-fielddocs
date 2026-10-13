@@ -1,4 +1,8 @@
 "use client";
+import {readableDate} from "../../lib/dates";
+import {holidayOn,dueCountdown} from "../../lib/work-calendar";
+import WorkDayCountdown from "../../components/WorkDayCountdown";
+import OntarioCalendarInfo from "../../components/OntarioCalendarInfo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { requireActiveStaff } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
@@ -32,12 +36,7 @@ type View = "gantt" | "calendar" | "list";
 type Project = { id: string; project_name: string };
 const ordered = (a: Task, b: Task) =>
   a.sort_order - b.sort_order || a.name.localeCompare(b.name);
-const short = (s: string) =>
-  day(s).toLocaleDateString("en-CA", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+const short = readableDate;
 const empty = (
   project: string,
   type: "task" | "phase",
@@ -472,6 +471,7 @@ export default function ScheduleWorkspace({
             ))}
           </select>
         </header>
+        <OntarioCalendarInfo/>
         {snap && (
           <div className="toolbar">
             <label>
@@ -710,7 +710,7 @@ export default function ScheduleWorkspace({
             <div className="viewtools">
               <span>
                 <b className="red">●</b> Critical · zero total float{" "}
-                <b className="blue">●</b> Other activities{" "}
+                <b className="schedule-normal-key">●</b> Other activities{" "}
                 <span className="baseline-key">━ Baseline</span>
               </span>
               {view === "gantt" && (
@@ -730,7 +730,7 @@ export default function ScheduleWorkspace({
                   </select>
                 </>
               )}
-              <small>Monday–Friday · holidays count as workdays</small>
+              <small>Monday–Friday · Ontario holidays excluded</small>
             </div>
             {view === "gantt" && !calculated.problem && (
               <Gantt
@@ -863,6 +863,7 @@ export default function ScheduleWorkspace({
                         </td>
                         <td>
                           {short(t.start)}–{short(t.finish)}
+                          <WorkDayCountdown due={t.finish} status={t.status}/>
                         </td>
                         <td>
                           {t.item_type === "task" && !t.is_milestone && (
@@ -963,7 +964,7 @@ export default function ScheduleWorkspace({
           {lookahead
             ? anchor + " to " + shift(anchor, lookahead * 7 - 1)
             : "Full schedule"}{" "}
-          · Prepared {today()} · Monday–Friday
+          · Prepared {readableDate(today())} · Monday–Friday, excluding Ontario holidays
         </p>
         <p>
           Filters:{" "}
@@ -999,8 +1000,8 @@ export default function ScheduleWorkspace({
                   </small>
                 </td>
                 <td>{t.trade}</td>
-                <td>{t.start}</td>
-                <td>{t.finish}</td>
+                <td>{readableDate(t.start)}</td>
+                <td>{readableDate(t.finish)}</td>
                 <td>
                   {labels[t.status]} {t.progress}%
                 </td>
@@ -1163,10 +1164,12 @@ type GanttProps = {
 };
 function Gantt(p: GanttProps) {
   const cell = p.zoom === "week" ? 32 : 12,
-    rowHeight = 64;
-  const [left, setLeft] = useState(390);
+    rowHeight = 38;
+  const [panelWidth, setPanelWidth] = useState(560);
+  const [listHidden, setListHidden] = useState(false);
+  const left = listHidden ? 0 : panelWidth;
   useEffect(() => {
-    const update = () => setLeft(window.innerWidth < 800 ? 220 : 390);
+    const update = () => setPanelWidth(window.innerWidth < 800 ? 280 : 560);
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -1238,19 +1241,19 @@ function Gantt(p: GanttProps) {
     if (n !== g.duration) void p.resize(g.id, n);
   }
   return (
-    <div className="gantt" ref={viewport} aria-label="Gantt chart">
+    <div className="gantt-workspace">
+      <div className="gantt-controls">
+        <button aria-expanded={!listHidden} onClick={() => setListHidden(v => !v)}>
+          {listHidden ? "› Show task list" : "‹ Hide task list"}
+        </button>
+        <span>Drag bars to move · Drag the right edge to resize</span>
+        <button onClick={() => { if (viewport.current) viewport.current.scrollLeft = Math.max(0, x(today()) - 100); }}>Today</button>
+      </div>
+    <div className={`gantt ${listHidden ? "list-hidden" : ""}`} ref={viewport} aria-label="Gantt chart">
       <div className="gantt-inner" style={{ width: left + count * cell }}>
         <div className="gantt-head">
-          <div className="frozen title" style={{ width: left }}>
-            Activity / phase{" "}
-            <button
-              onClick={() => {
-                if (viewport.current)
-                  viewport.current.scrollLeft = Math.max(0, x(today()) - 100);
-              }}
-            >
-              Today
-            </button>
+          <div className="frozen title" style={{ width: left, display: listHidden ? "none" : undefined }}>
+            <span className="name-heading">Name</span><span className="gantt-date-cell">Start date</span><span className="gantt-date-cell">Due date</span>
           </div>
           <div style={{ width: count * cell }}>
             <div className="month-head">
@@ -1265,7 +1268,8 @@ function Gantt(p: GanttProps) {
                 <span
                   key={d}
                   style={{ width: cell }}
-                  className={!work(d) ? "weekend" : ""}
+                  className={holidayOn(d) ? "holiday" : !work(d) ? "weekend" : ""}
+                  title={`${readableDate(d)}${holidayOn(d) ? " · "+holidayOn(d)!.name+" · Non-working day" : ""}`}
                 >
                   {p.zoom === "week"
                     ? day(d).getUTCDate()
@@ -1285,7 +1289,7 @@ function Gantt(p: GanttProps) {
             <div className="gantt-row" key={t.id} style={{ height: rowHeight }}>
               <div
                 className={`frozen rowname ${t.item_type === "phase" ? "phase-row" : ""}`}
-                style={{ width: left }}
+                style={{ width: left, display: listHidden ? "none" : undefined }}
               >
                 <div className="order">
                   <button
@@ -1322,7 +1326,9 @@ function Gantt(p: GanttProps) {
                       : t.trade || "Unassigned"}
                   </small>
                 </button>
-                {t.critical && <span className="badge">CRITICAL</span>}
+                {t.critical && <span className="critical-dot" title="Critical path" aria-label="Critical path" />}
+                <span className="gantt-date-cell">{readableDate(t.start)}</span>
+                <span className="gantt-date-cell">{readableDate(t.finish)}</span>
                 {t.item_type === "phase" && (
                   <button
                     disabled={p.busy}
@@ -1356,13 +1362,15 @@ function Gantt(p: GanttProps) {
                   } catch {}
                 }}
               >
+                {timeline.filter(d=>!work(d) && !holidayOn(d)).map(d=><i key={d} aria-hidden="true" className="weekend-band" style={{left:x(d),width:cell}}/>)}
+                {timeline.filter(d=>holidayOn(d)).map(d=><i key={d} aria-hidden="true" className="holiday-band" style={{left:x(d),width:cell}}/>)}
                 {x(today()) >= 0 && x(today()) <= count * cell && (
                   <i className="todayline" style={{ left: x(today()) }} />
                 )}
                 {base && (
                   <div
                     className="baseline-bar"
-                    title={`Baseline ${base.start}–${base.finish}`}
+                    title={`Baseline ${readableDate(base.start)}–${readableDate(base.finish)}`}
                     style={{
                       left: x(base.start),
                       width: (distance(base.start, base.finish) + 1) * cell,
@@ -1371,7 +1379,7 @@ function Gantt(p: GanttProps) {
                 )}
                 <div
                   className={`bar ${colour(t)} ${t.is_milestone ? "milestone" : ""}`}
-                  title={`${t.name}: ${t.start}–${displayedFinish}; ${t.float} work days float`}
+                  title={`${t.name}: ${readableDate(t.start)}–${readableDate(displayedFinish)}; ${t.float} work days float`}
                   style={{
                     left: x(t.start) + 2,
                     width: t.is_milestone
@@ -1473,6 +1481,11 @@ function Gantt(p: GanttProps) {
                     />
                   )}
                 </div>
+                <button className="timeline-task-name" onClick={() => p.open(t)}
+                  style={{left: x(displayedFinish) + cell + 7, top: 9}}
+                  title={`${t.name} · ${readableDate(t.start)}–${readableDate(displayedFinish)}`}>
+                  {t.name}
+                </button>
               </div>
             </div>
           );
@@ -1518,8 +1531,8 @@ function Gantt(p: GanttProps) {
                 addWork(a.finish, 1 + l.lag_work_days) === b.start;
             const x1 = x(a.finish) + cell - 2,
               x2 = x(b.start) + 2,
-              y1 = i * rowHeight + 28,
-              y2 = j * rowHeight + 28;
+              y1 = i * rowHeight + 19,
+              y2 = j * rowHeight + 19;
             return (
               <path
                 key={l.id}
@@ -1533,6 +1546,7 @@ function Gantt(p: GanttProps) {
           })}
         </svg>
       </div>
+    </div>
     </div>
   );
 }
@@ -1610,7 +1624,7 @@ function Calendar(p: CalendarProps) {
             <div
               className="calweek"
               key={start}
-              style={{ height: 60 + Math.max(2, limit) * 30 }}
+              style={{ height: 88 + Math.max(2, limit) * 30 }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
@@ -1637,11 +1651,13 @@ function Calendar(p: CalendarProps) {
                     <button
                       key={d}
                       disabled={p.busy}
-                      aria-label={`Add activity ${d}`}
-                      className={`${!work(d) ? "weekend" : ""} ${d === today() ? "today" : ""} ${d.slice(0, 7) !== p.anchor.slice(0, 7) ? "muted" : ""}`}
+                      aria-label={`Add activity ${readableDate(d)}${holidayOn(d)?" · "+holidayOn(d)!.name:""}`}
+                      title={holidayOn(d)?`${holidayOn(d)!.name} · Non-working day. New work starts on the next working day.`:readableDate(d)}
+                      className={`${holidayOn(d)?"holiday":!work(d) ? "weekend" : ""} ${d === today() ? "today" : ""} ${d.slice(0, 7) !== p.anchor.slice(0, 7) ? "muted" : ""}`}
                       onClick={() => p.add(d)}
                     >
                       <span>{day(d).getUTCDate()}</span>
+                      {holidayOn(d)&&<small className="holiday-name">{holidayOn(d)!.name}</small>}
                     </button>
                   ),
                 )}
@@ -1652,11 +1668,11 @@ function Calendar(p: CalendarProps) {
                   <button
                     key={e.task.id}
                     className={`calendar-event ${colour(e.task)}`}
-                    title={`${e.task.name} · ${e.task.trade || "Unassigned"} · ${e.task.start}–${e.task.finish}`}
+                    title={`${e.task.name} · ${e.task.trade || "Unassigned"} · ${readableDate(e.task.start)}–${readableDate(e.task.finish)} · ${dueCountdown(e.task.finish,e.task.status)}`}
                     style={{
                       left: `calc(${(e.from / 7) * 100}% + 3px)`,
                       width: `calc(${(e.span / 7) * 100}% - 6px)`,
-                      top: 34 + e.lane * 30,
+                      top: 62 + e.lane * 30,
                     }}
                     onClick={() => p.open(e.task)}
                     draggable={!p.busy}
@@ -1694,7 +1710,7 @@ function Calendar(p: CalendarProps) {
               {max > 4 && (
                 <button
                   className="more"
-                  style={{ top: 37 + limit * 30 }}
+                  style={{ top: 65 + limit * 30 }}
                   onClick={() =>
                     setExpanded((old) => {
                       const n = new Set(old);
@@ -1832,7 +1848,8 @@ function Editor(p: EditorProps) {
                     : current.float + " work days total float"}
                 </strong>
                 <p>
-                  Scheduled: {current.start} → {current.finish}
+                  Scheduled: {readableDate(current.start)} → {readableDate(current.finish)}
+                  <WorkDayCountdown due={current.finish} status={current.status}/>
                 </p>
                 <p>
                   Controlling predecessor

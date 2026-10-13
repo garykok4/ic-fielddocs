@@ -1,0 +1,340 @@
+.report-prose {
+  font-family: Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.15;
+  color: #17242b;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+  text-align: left;
+  white-space: pre-wrap;
+}
+.report-prose p {
+  margin: 0 0 8pt;
+  min-height: 1.15em;
+}
+.report-prose h1 {
+  font-size: 22pt;
+  font-weight: 700;
+  margin: 12pt 0 8pt;
+}
+.report-prose h2 {
+  font-size: 17pt;
+  font-weight: 700;
+  margin: 10pt 0 8pt;
+}
+.report-prose h3 {
+  font-size: 14pt;
+  font-weight: 700;
+  margin: 8pt 0;
+}
+.report-prose ul {
+  list-style-type: disc;
+  padding-left: 28px;
+  margin: 0 0 8pt;
+}
+.report-prose ol {
+  list-style-type: decimal;
+  padding-left: 28px;
+  margin: 0 0 8pt;
+}
+.report-prose ul ul {
+  list-style-type: circle;
+}
+.report-prose li {
+  margin: 0 0 4pt;
+}
+.report-prose li > p {
+  margin-bottom: 4pt;
+}
+.report-prose li p:last-child {
+  margin-bottom: 0;
+}
+.report-prose strong {
+  font-weight: 700;
+}
+.report-prose em {
+  font-style: italic;
+}
+.report-prose blockquote {
+  border-left: 3px solid #a8bac5;
+  margin: 8pt 0;
+  padding-left: 16px;
+}
+.report-prose pre {
+  white-space: pre-wrap;
+  background: #f4f6f7;
+  padding: 12px;
+  font-family: "Courier New", monospace;
+}
+.report-prose hr {
+  border: 0;
+  border-top: 1px solid #a7b6be;
+  margin: 12pt 0;
+}
+.report-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 8pt 0;
+  white-space: normal;
+}
+.report-prose td,
+.report-prose th {
+  border: 1px solid #889aa5;
+  padding: 8px;
+  vertical-align: top;
+  min-width: 50px;
+  white-space: pre-wrap;
+  text-align: left;
+  position: relative;
+}
+.report-prose th {
+  background: #edf1f4;
+  font-weight: 700;
+}
+.report-prose td p:last-child,
+.report-prose th p:last-child {
+  margin-bottom: 0;
+}
+.report-table-scroll,
+.report-prose .tableWrapper {
+  overflow-x: auto;
+}
+.report-plain {
+  white-space: pre-wrap;
+  margin: 0 0 12pt;
+}
+.report-prose .selectedCell:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #bedcff66;
+  pointer-events: none;
+}
+.rich-editor {
+  border: 1px solid #bbc7ce;
+  border-radius: 8px;
+  background: #fff;
+  margin: 8px 0 24px;
+  overflow: hidden;
+}
+.rich-toolbar {
+  padding: 10px;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+  background: #f2f5f7;
+  border-bottom: 1px solid #cdd6dc;
+}
+.rich-toolbar label {
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  color: #4a5e6b;
+  font-weight: 600;
+}
+.rich-toolbar button,
+.rich-toolbar select {
+  font-family: Arial, sans-serif;
+  background: #fff;
+  color: #243c4c;
+  border: 1px solid #c1cdd5;
+  border-radius: 4px;
+  padding: 7px 9px;
+  font-size: 12px;
+  min-height: 34px;
+  cursor: pointer;
+  margin: 0;
+}
+.rich-toolbar select {
+  display: block;
+  margin-top: 3px;
+  max-width: 155px;
+}
+.rich-toolbar button.active {
+  background: #fff0e4;
+  border-color: #ea7319;
+  color: #963c00;
+}
+.rich-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.rich-toolbar button:focus-visible,
+.rich-toolbar select:focus-visible {
+  outline: 2px solid #0a7cb8;
+  outline-offset: 2px;
+}
+.rich-editor .tiptap {
+  min-height: 180px;
+  padding: 18px;
+  outline: none;
+  max-height: 650px;
+  overflow: auto;
+}
+.rich-editor .tiptap:focus {
+  box-shadow: inset 0 0 0 2px #cfdeea;
+}
+.rich-table-tools {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid #c9d3d9;
+  padding-top: 8px;
+}
+.rich-help {
+  border-top: 1px solid #dce3e7;
+  padding: 9px 12px;
+  color: #63737d;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.rich-help button {
+  background: transparent;
+  border: 0;
+  color: #285875;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.report-form {
+  max-width: 1100px;
+  padding: 24px;
+  margin: auto;
+}
+.report-form > h1 {
+  margin-bottom: 8px;
+}
+.report-form .report-meta {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+.report-form .report-meta label,
+.report-form .report-label {
+  font-weight: bold;
+  display: block;
+}
+.report-form .report-meta input,
+.report-form .report-meta select {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #bbc7ce;
+  border-radius: 5px;
+  background: #fff;
+  margin-top: 6px;
+}
+.report-form .report-wide {
+  grid-column: 1/-1;
+}
+.report-form .report-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.report-form .report-actions button {
+  padding: 10px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.report-form fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.report-form .report-error {
+  padding: 12px;
+  border: 1px solid #e8b8b8;
+  color: #a32323;
+  background: #fff3f3;
+  border-radius: 5px;
+}
+.report-form .report-info {
+  color: #5a6f7b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.report-form .report-preview {
+  padding: 25px;
+  border: 1px solid #ccd5db;
+  background: white;
+  margin: 20px 0;
+}
+.report-form .report-preview h2 {
+  margin: 20px 0 10px;
+}
+.report-form button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+@media (max-width: 650px) {
+  .report-form {
+    padding: 16px;
+  }
+  .report-form .report-meta {
+    grid-template-columns: 1fr;
+  }
+  .rich-toolbar {
+    gap: 5px;
+    padding: 7px;
+  }
+  .rich-toolbar button {
+    padding: 7px;
+  }
+  .rich-editor .tiptap {
+    padding: 12px;
+  }
+  .report-form .report-preview {
+    padding: 12px;
+  }
+}
+@media print {
+  .report-prose {
+    color: #000;
+    overflow: visible !important;
+  }
+  .report-table-scroll,
+  .report-prose .tableWrapper {
+    overflow: visible !important;
+  }
+  .report-prose table {
+    width: 100% !important;
+  }
+  .report-prose tr {
+    break-inside: avoid;
+  }
+  .report-prose h1,
+  .report-prose h2,
+  .report-prose h3 {
+    break-after: avoid;
+  }
+  .report-prose p {
+    orphans: 3;
+    widows: 3;
+  }
+  .report-prose th {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .report-print-hide {
+    display: none !important;
+  }
+  .report-print-sheet {
+    break-after: page;
+  }
+  .report-print-sheet:last-child {
+    break-after: auto;
+  }
+  .report-print-sheet.card {
+    break-inside: auto !important;
+    box-shadow: none !important;
+  }
+  .report-prose {
+    max-height: none !important;
+  }
+}

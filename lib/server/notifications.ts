@@ -1,3 +1,5 @@
+import {readableDate} from "../dates";
+import {dueCountdown} from "../work-calendar";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createHash } from "node:crypto";
@@ -113,13 +115,14 @@ async function buildMessage(
         .eq("staff_id", person.id);
       if (ar.error) throw ar.error;
       const allowed = new Set((ar.data || []).map((a) => a.project_id));
-      tasks = tasks.filter((t) => allowed.has(t.project_id));
+      tasks = tasks.filter((t) => !t.project_id || allowed.has(t.project_id));
     }
     if (!tasks.length) return null;
-    const projects = await db
+    const projectIds = [...new Set(tasks.map((t) => t.project_id).filter(Boolean))];
+    const projects = projectIds.length ? await db
       .from("projects")
       .select("id,project_name")
-      .in("id", [...new Set(tasks.map((t) => t.project_id))]);
+      .in("id", projectIds) : {data:[],error:null};
     if (projects.error) throw projects.error;
     const title =
       q.kind === "assignment"
@@ -128,7 +131,7 @@ async function buildMessage(
     return {
       to: [person.email.trim().toLowerCase()],
       subject: title,
-      html: `<h2>${title}</h2><p>Hello ${escape(person.full_name)},</p><ul>${tasks.map((t) => `<li><strong>${escape(t.title)}</strong> — ${escape(projects.data?.find((p) => p.id === t.project_id)?.project_name)}<br>Due: ${escape(t.due_date || "Not set")} · ${escape(t.priority)} · ${escape(t.status.replaceAll("_", " "))}<br><a href="${base}/projects/${encodeURIComponent(t.project_id)}?tab=tasks">Open project tasks</a></li>`).join("")}</ul><p><a href="${base}/tasks">View all my tasks</a></p>`,
+      html: `<h2>${title}</h2><p>Hello ${escape(person.full_name)},</p><ul>${tasks.map((t) => `<li><strong>${escape(t.title)}</strong> — ${escape(t.project_id ? projects.data?.find((p) => p.id === t.project_id)?.project_name : "General task")}<br>Due: ${escape(readableDate(t.due_date) || "Not set")} · ${escape(dueCountdown(t.due_date,t.status))} · ${escape(t.priority)} · ${escape(t.status.replaceAll("_", " "))}<br><a href="${base}/tasks?task=${encodeURIComponent(t.id)}">Open task</a></li>`).join("")}</ul><p><a href="${base}/tasks">View all my tasks</a></p>`,
     };
   }
   const config = configs[q.kind];

@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../../../lib/dates";
 import { useEffect, useState } from "react";
 import { requireActiveStaff } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
@@ -111,7 +112,7 @@ export default function NotificationStatus() {
                     <td>{r.kind}</td>
                     <td>{r.status}</td>
                     <td>{r.attempts}</td>
-                    <td>{new Date(r.created_at).toLocaleString()}</td>
+                    <td>{readableDateTime(r.created_at)}</td>
                     <td>{r.last_error || "—"}</td>
                   </tr>
                 ))}

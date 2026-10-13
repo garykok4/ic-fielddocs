@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../lib/dates";
 import { useState } from "react";
 import { PublishedFile, fileSize } from "../lib/project-files";
 export default function PublishedFiles({
@@ -65,7 +66,7 @@ export default function PublishedFiles({
                 {f.number} <span>{f.title}</span>
               </h3>
               <p>
-                {f.kind} · {f.issue_date}
+                {f.kind} · {readableDate(f.issue_date)}
               </p>
               <span
                 className={

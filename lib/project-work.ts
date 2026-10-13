@@ -8,7 +8,7 @@ export type Person = {
 };
 export type ProjectTask = {
   id: string;
-  project_id: string;
+  project_id: string | null;
   title: string;
   description: string;
   assignee_id: string | null;

@@ -1,4 +1,6 @@
 "use client";
+import {readableDate,readableDateTime} from "../../lib/dates";
+import ReportContent from "../../components/reports/ReportContent";
 
 import Link from "next/link";
 import { requireActiveStaff } from "../../lib/auth";
@@ -26,13 +28,15 @@ export default function ReportsPage() {
     if (staffProfile.role === "admin") {
       const { data, error } = await supabase
         .from("daily_reports")
-        .select(`
+        .select(
+          `
           *,
           projects (
             project_name,
             address
           )
-        `)
+        `,
+        )
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -63,13 +67,15 @@ export default function ReportsPage() {
 
     const { data, error } = await supabase
       .from("daily_reports")
-      .select(`
+      .select(
+        `
         *,
         projects (
           project_name,
           address
         )
-      `)
+      `,
+      )
       .in("project_id", projectIds)
       .order("created_at", { ascending: false });
 
@@ -84,11 +90,14 @@ export default function ReportsPage() {
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <h1>Daily Site Reports</h1>
+      <p>
+        <Link href="/reports/new">+ New daily report</Link>
+      </p>
 
       {profile && (
         <p>
-          Logged in as: <strong>{profile.full_name || profile.email}</strong> | Role:{" "}
-          <strong>{profile.role}</strong>
+          Logged in as: <strong>{profile.full_name || profile.email}</strong> |
+          Role: <strong>{profile.role}</strong>
         </p>
       )}
 
@@ -98,7 +107,7 @@ export default function ReportsPage() {
         <section key={r.id} className="card">
           <h2>{r.projects?.project_name || "Unknown Project"}</h2>
           <p>
-            <strong>Date:</strong> {r.report_date}
+            <strong>Date:</strong> {readableDate(r.report_date)}
           </p>
           <p>
             <strong>Address:</strong> {r.projects?.address}
@@ -106,15 +115,21 @@ export default function ReportsPage() {
           <p>
             <strong>Weather:</strong> {r.weather}
           </p>
-          <p>
-            <strong>Work Completed:</strong> {r.work_completed}
-          </p>
-          <p>
-            <strong>Labour:</strong> {r.labour}
-          </p>
-          <p>
-            <strong>Issues / Notes:</strong> {r.issues}
-          </p>
+          <div>
+            <strong>Work Completed:</strong>
+            <ReportContent
+              value={r.rich_text?.work_completed}
+              text={r.work_completed}
+            />
+          </div>
+          <div>
+            <strong>Labour:</strong>
+            <ReportContent value={r.rich_text?.labour} text={r.labour} />
+          </div>
+          <div>
+            <strong>Issues / Notes:</strong>
+            <ReportContent value={r.rich_text?.issues} text={r.issues} />
+          </div>
 
           <Link href={`/reports/${r.id}`}>View Report</Link>
         </section>

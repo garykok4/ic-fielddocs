@@ -1,4 +1,6 @@
 "use client";
+import {readableDate,readableDateTime} from "../../../lib/dates";
+import ReportContent from "../../../components/reports/ReportContent";
 
 import { requireActiveStaff } from "../../../lib/auth";
 import { useEffect, useState } from "react";
@@ -7,7 +9,9 @@ import { supabase } from "../../../lib/supabase";
 export default function PrintReportsPage() {
   const [reports, setReports] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
-  const [photosByReport, setPhotosByReport] = useState<Record<string, any[]>>({});
+  const [photosByReport, setPhotosByReport] = useState<Record<string, any[]>>(
+    {},
+  );
   const [profile, setProfile] = useState<any>(null);
 
   const [selectedProject, setSelectedProject] = useState("");
@@ -81,7 +85,8 @@ export default function PrintReportsPage() {
 
     let query = supabase
       .from("daily_reports")
-      .select(`
+      .select(
+        `
         *,
         projects (
           project_name,
@@ -89,7 +94,8 @@ export default function PrintReportsPage() {
           city,
           province
         )
-      `)
+      `,
+      )
       .order("report_date", { ascending: false });
 
     if (staffProfile.role !== "admin") {
@@ -150,13 +156,13 @@ export default function PrintReportsPage() {
       <h1>Daily Site Reports Package</h1>
 
       {profile && (
-        <p>
-          Logged in as: <strong>{profile.full_name || profile.email}</strong> | Role:{" "}
-          <strong>{profile.role}</strong>
+        <p className="report-print-hide">
+          Logged in as: <strong>{profile.full_name || profile.email}</strong> |
+          Role: <strong>{profile.role}</strong>
         </p>
       )}
 
-      <section className="card">
+      <section className="card report-print-hide">
         <h2>Filters</h2>
 
         <div style={{ marginBottom: 12 }}>
@@ -196,44 +202,60 @@ export default function PrintReportsPage() {
           />
         </div>
 
-        <button onClick={() => fetchReports()}>
-          Apply Filters
-        </button>
+        <button onClick={() => fetchReports()}>Apply Filters</button>
       </section>
 
-      <button onClick={() => window.print()}>
+      <button className="report-print-hide" onClick={() => window.print()}>
         Print / Save All Reports as PDF
       </button>
 
       {reports.length === 0 && <p>No reports found.</p>}
 
       {reports.map((report) => (
-        <section
-          key={report.id}
-          className="card"
-          style={{
-            pageBreakAfter: "always",
-          }}
-        >
+        <section key={report.id} className="card report-print-sheet">
           <h2>{report.projects?.project_name}</h2>
 
-          <p><strong>Address:</strong> {report.projects?.address}</p>
-          <p><strong>Location:</strong> {report.projects?.city}, {report.projects?.province}</p>
-          <p><strong>Report Date:</strong> {report.report_date}</p>
+          <p>
+            <strong>Address:</strong> {report.projects?.address}
+          </p>
+          <p>
+            <strong>Location:</strong> {report.projects?.city},{" "}
+            {report.projects?.province}
+          </p>
+          <p>
+            <strong>Report Date:</strong> {readableDate(report.report_date)}
+          </p>
 
           <hr />
 
-          <p><strong>Weather:</strong></p>
+          <p>
+            <strong>Weather:</strong>
+          </p>
           <p>{report.weather || "—"}</p>
 
-          <p><strong>Work Completed:</strong></p>
-          <p>{report.work_completed || "—"}</p>
+          <p>
+            <strong>Work Completed:</strong>
+          </p>
+          <ReportContent
+            value={report.rich_text?.work_completed}
+            text={report.work_completed}
+          />
 
-          <p><strong>Labour on Site:</strong></p>
-          <p>{report.labour || "—"}</p>
+          <p>
+            <strong>Labour on Site:</strong>
+          </p>
+          <ReportContent
+            value={report.rich_text?.labour}
+            text={report.labour}
+          />
 
-          <p><strong>Issues / Delays / Notes:</strong></p>
-          <p>{report.issues || "—"}</p>
+          <p>
+            <strong>Issues / Delays / Notes:</strong>
+          </p>
+          <ReportContent
+            value={report.rich_text?.issues}
+            text={report.issues}
+          />
 
           <hr />
 

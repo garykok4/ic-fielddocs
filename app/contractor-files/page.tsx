@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../../lib/dates";
 import { useEffect, useRef, useState } from "react";
 import PublishedFiles from "../../components/PublishedFiles";
 import { PublishedFile } from "../../lib/project-files";
@@ -154,7 +155,7 @@ export default function ContractorFiles() {
               busy={busy}
             />
             <p className="files-muted">
-              Updated {refreshed ? new Date(refreshed).toLocaleString() : ""}.
+              Updated {refreshed ? readableDateTime(refreshed) : ""}.
               Only the current published revision is shown. Downloaded copies do
               not update automatically.
             </p>

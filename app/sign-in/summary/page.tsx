@@ -1,4 +1,5 @@
 "use client";
+import {readableDate,readableDateTime} from "../../../lib/dates";
 
 import { requireActiveStaff } from "../../../lib/auth";
 import { useEffect, useState } from "react";
@@ -255,7 +256,7 @@ export default function SignInSummaryPage() {
 
             <p>
               {r.projects?.project_name || "Unknown Project"} |{" "}
-              {r.sign_in_date}
+              {readableDate(r.sign_in_date)}
             </p>
           </div>
         ))}

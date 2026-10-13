@@ -1,3 +1,4 @@
+import { ontarioToday,isWorkDay,nextWorkDay,addWorkDays,workingDaysBetween } from "../../lib/work-calendar";
 export type Status = "not_started" | "in_progress" | "complete" | "on_hold";
 export type Task = {
   id: string;
@@ -53,36 +54,15 @@ export const labels: Record<Status, string> = {
 };
 export const day = (s: string) => new Date(s + "T00:00:00Z");
 export const fmt = (d: Date) => d.toISOString().slice(0, 10);
-export const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+export const today = ontarioToday;
 export const shift = (s: string, n: number) =>
   fmt(new Date(+day(s) + n * 86400000));
 export const distance = (a: string, b: string) =>
   Math.round((+day(b) - +day(a)) / 86400000);
-export const work = (s: string) => ![0, 6].includes(day(s).getUTCDay());
-export function normalize(s: string) {
-  while (!work(s)) s = shift(s, 1);
-  return s;
-}
-export function addWork(s: string, n: number) {
-  const dir = n < 0 ? -1 : 1;
-  for (let i = 0; i < Math.abs(n);) {
-    s = shift(s, dir);
-    if (work(s)) i++;
-  }
-  return s;
-}
-export function workDistance(a: string, b: string): number {
-  if (a > b) return -workDistance(b, a);
-  let n = 0;
-  while (a < b) {
-    a = shift(a, 1);
-    if (work(a)) n++;
-  }
-  return n;
-}
+export const work = isWorkDay;
+export const normalize = nextWorkDay;
+export const addWork = addWorkDays;
+export const workDistance = workingDaysBetween;
 export const finish = (s: string, n: number) => addWork(s, Math.max(0, n - 1));
 export const durationTo = (s: string, f: string) =>
   Math.max(1, workDistance(s, f) + 1);
