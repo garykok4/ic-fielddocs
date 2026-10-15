@@ -21,6 +21,7 @@ export default function RootLayout({
   const pathname = usePathname(),
     [profile, setProfile] = useState<Person | null>(null),
     [mobile, setMobile] = useState(false),
+    [canEstimate, setCanEstimate] = useState(false),
     [error, setError] = useState("");
   const publicPage = [
     "/login",
@@ -46,6 +47,7 @@ export default function RootLayout({
       try {
         const p = await requireActiveStaff();
         if (alive) setProfile(p);
+        if (p) {const permission = await supabase.rpc("fielddocs_can_estimate"); if(alive)setCanEstimate(!permission.error && permission.data === true);}
       } catch {
         if (alive)
           setError("Unable to verify your account. Refresh to try again.");
@@ -59,6 +61,7 @@ export default function RootLayout({
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
         setProfile(null);
+        setCanEstimate(false);
         if (!publicPage) window.location.href = "/login";
       }
     });
@@ -144,6 +147,7 @@ export default function RootLayout({
             >
               <div className="nav-section">WORKSPACE</div>
               {primary.map(([href, label, icon]) => item(href, label, icon))}
+              {(canEstimate || profile?.role === "admin") && <><div className="nav-section">ESTIMATING</div>{item("/estimating", "Fee calculator", "◇")}</>}
               <div className="nav-section">FIELD RECORDS</div>
               <details open={pathname.startsWith("/reports")}>
                 <summary>Reports</summary>

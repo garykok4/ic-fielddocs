@@ -273,6 +273,36 @@ export default function TaskBoard({
       disabled={busy} aria-label={`${t.status === "done" ? "Reopen" : "Complete"} ${t.title}`}
       onChange={() => void toggleComplete(t)} />;
   }
+  async function quickDelete(t: ProjectTask) {
+    if (lock.current || !confirm(`Delete “${t.title}” and its comments? This cannot be undone.${t.activity_id ? " The linked schedule activity will remain." : ""}`)) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await supabase.rpc("fielddocs_task_delete", {
+        p_id: t.id, p_revision: t.revision,
+      });
+      if (result.error) throw result.error;
+      setTasks(current => current.filter(row => row.id !== t.id));
+      onChange?.();
+      setNotice(`Deleted: ${t.title}.`);
+    } catch (e) {
+      await load();
+      setError((e as Error).message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  function deleteControl(t: ProjectTask) {
+    return <button type="button" className="quick-delete" disabled={busy}
+      aria-label={`Delete ${t.title}`} title={`Delete ${t.title}`}
+      onClick={() => void quickDelete(t)}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>
+      <span>Delete</span>
+    </button>;
+  }
   async function remove() {
     if (
       !editing ||
@@ -510,6 +540,7 @@ export default function TaskBoard({
                 <th>Due</th>
                 <th>Status</th>
                 <th>Priority</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -560,6 +591,7 @@ export default function TaskBoard({
                       {t.priority}
                     </span>
                   </td>
+                  <td>{deleteControl(t)}</td>
                 </tr>
               ))}
             </tbody>
@@ -585,7 +617,7 @@ export default function TaskBoard({
                       {readableDate(t.due_date) || "No due date"}
                       <WorkDayCountdown due={t.due_date} status={t.status}/>
                     </p>
-                    <span className="badge">{t.priority}</span>
+                    <div className="taskcard-footer"><span className="badge">{t.priority}</span>{deleteControl(t)}</div>
                   </div>
                 ))}
             </div>

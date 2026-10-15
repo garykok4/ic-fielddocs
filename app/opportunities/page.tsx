@@ -28,6 +28,7 @@ export default function OpportunitiesPage() {
     <main style={{ padding: 24 }}>
       <h1>Opportunities</h1>
       <p>Hidden opportunity scanner module.</p>
+      <p><a href="/estimating">Open internal fee calculator →</a></p>
 
       <button
         style={{

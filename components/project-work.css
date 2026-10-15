@@ -343,3 +343,9 @@
 .pw .taskboard .tablewrap{border:1px solid #e2e8f0;border-radius:6px}
 .pw .taskboard th{background:#f8fafc;font-size:12px;font-weight:500;color:#526174}
 .pw .taskboard tbody tr:hover{background:#f6f9fc}
+
+.pw .quick-delete{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;background:white;border:1px solid #e2e8f0;border-radius:5px;color:#a33d49;font-size:12px;cursor:pointer;white-space:nowrap}
+.pw .quick-delete:hover:not(:disabled){background:#fff1f2;border-color:#f0b7bf}
+.pw .quick-delete:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.pw .quick-delete:disabled{opacity:.5;cursor:wait}
+.pw .taskcard-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
