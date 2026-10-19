@@ -76,8 +76,8 @@ export default function RootLayout({
     window.location.href = "/login";
   }
   const active = (href: string) =>
-    href === "/"
-      ? pathname === "/"
+    (href === "/" || href === "/estimating")
+      ? pathname === href
       : pathname === href || pathname.startsWith(href + "/");
   const item = (href: string, label: string, icon?: string) => (
     <Link
@@ -147,7 +147,7 @@ export default function RootLayout({
             >
               <div className="nav-section">WORKSPACE</div>
               {primary.map(([href, label, icon]) => item(href, label, icon))}
-              {(canEstimate || profile?.role === "admin") && <><div className="nav-section">ESTIMATING</div>{item("/estimating", "Fee calculator", "◇")}</>}
+              {(canEstimate || profile?.role === "admin") && <><div className="nav-section">ESTIMATING</div>{item("/estimating/preliminary", "Preliminary budgets", "▤")}{item("/estimating", "Fee calculator", "◇")}</>}
               <div className="nav-section">FIELD RECORDS</div>
               <details open={pathname.startsWith("/reports")}>
                 <summary>Reports</summary>

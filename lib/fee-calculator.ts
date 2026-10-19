@@ -1,5 +1,5 @@
 /** Scheps proposed schedule v1. All figures exclude HST. Do not round marginal rates. */
-export const MODEL_VERSION = 'scheps-v1';
+export const MODEL_VERSION = 'scheps-v2';
 export const BENCHMARK = { construction: 28972074.64, recordedFee: 800749.77, supervision: 200000, trailer: 36000 };
 export type FeeInputs = {
   constructionCost: number;
@@ -32,18 +32,24 @@ export function validateFeeInputs(i: FeeInputs): void {
   }
   if (typeof i.trailerRequired !== 'boolean') throw Error('Choose whether a trailer is required.');
 }
-export function calculateFee(i: FeeInputs) {
+export function calculateFee(i: FeeInputs, modelVersion: string = MODEL_VERSION) {
+  if (!["scheps-v1","scheps-v2"].includes(modelVersion)) throw Error("Unsupported pricing model");
   validateFeeInputs(i);
   const historicalPjm = BENCHMARK.recordedFee - BENCHMARK.supervision - i.historicalTrailerTotal;
   const fixedHistorical = 250000 * .06 + 1750000 * .04 + 8000000 * .015 + (BENCHMARK.construction - 20000000) * .0075;
   const middleRate = (historicalPjm - fixedHistorical) / 10000000;
-  const bands = [
+  const bands = (modelVersion === "scheps-v2" ? [
+    { name: "First $500,000", lower: 0, upper: 500000, rate: .08 },
+    { name: "$500,000–$1 million", lower: 500000, upper: 1000000, rate: .06 },
+    { name: "$1–$10 million", lower: 1000000, upper: 10000000, rate: .04 },
+    { name: "Above $10 million", lower: 10000000, upper: Infinity, rate: .02 },
+  ] : [
     { name: 'First $250,000', lower: 0, upper: 250000, rate: .06 },
     { name: '$250,000–$2 million', lower: 250000, upper: 2000000, rate: .04 },
     { name: '$2–$12 million', lower: 2000000, upper: 12000000, rate: middleRate },
     { name: '$12–$20 million', lower: 12000000, upper: 20000000, rate: .015 },
     { name: 'Above $20 million', lower: 20000000, upper: Infinity, rate: .0075 },
-  ].map(b => {const eligible = Math.max(0, Math.min(i.constructionCost, b.upper) - b.lower); return {...b, eligible, fee: eligible * b.rate};});
+  ]).map(b => {const eligible = Math.max(0, Math.min(i.constructionCost, b.upper) - b.lower); return {...b, eligible, fee: eligible * b.rate};});
   const pjm = bands.reduce((sum, b) => sum + b.fee, 0);
   const supervision = i.supervisorAnnualCost * i.projectMonths / 12 * i.supervisorAllocation / 100;
   const trailer = i.trailerRequired ? i.trailerMonthlyCost * i.projectMonths + i.trailerSetup : 0;

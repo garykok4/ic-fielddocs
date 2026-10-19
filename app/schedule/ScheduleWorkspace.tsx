@@ -3,6 +3,7 @@ import {readableDate} from "../../lib/dates";
 import {holidayOn,dueCountdown} from "../../lib/work-calendar";
 import WorkDayCountdown from "../../components/WorkDayCountdown";
 import OntarioCalendarInfo from "../../components/OntarioCalendarInfo";
+import LookaheadExport from "../../components/LookaheadExport";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { requireActiveStaff } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
@@ -31,6 +32,12 @@ import {
 } from "./engine";
 import "./schedule.css";
 import { addPreconstructionTemplate } from "./preconstruction";
+
+type GanttZoom = "week" | "month" | "six" | "year" | "project";
+type CalendarMode = "week" | "month" | "three" | "six";
+function monthShift(date: string, months: number) {
+  const d = day(date.slice(0, 7) + "-01"); d.setUTCMonth(d.getUTCMonth() + months); return fmt(d);
+}
 
 type View = "gantt" | "calendar" | "list";
 type Project = { id: string; project_name: string };
@@ -89,6 +96,7 @@ export default function ScheduleWorkspace({
   planningMode?: boolean;
 }) {
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [exportOpen,setExportOpen]=useState(false);
   const [stageFilter, setStageFilter] = useState(
     planningMode ? "preconstruction" : "",
   );
@@ -96,8 +104,8 @@ export default function ScheduleWorkspace({
     [project, setProject] = useState(""),
     [snap, setSnap] = useState<Snapshot | null>(null);
   const [view, setView] = useState<View>("gantt"),
-    [zoom, setZoom] = useState<"week" | "month">("week"),
-    [calendarMode, setCalendarMode] = useState<"week" | "month">("month"),
+    [zoom, setZoom] = useState<GanttZoom>("week"),
+    [calendarMode, setCalendarMode] = useState<CalendarMode>("month"),
     [anchor, setAnchor] = useState(today());
   const [search, setSearch] = useState(""),
     [phaseFilter, setPhaseFilter] = useState(""),
@@ -447,6 +455,7 @@ export default function ScheduleWorkspace({
     projects.find((p) => p.id === project)?.project_name || "Project";
   return (
     <main className="fd">
+      {exportOpen&&<LookaheadExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project schedule"} defaultFormat={view==='calendar'?'calendar':'gantt'} close={()=>setExportOpen(false)}/>}
       <div className="screen">
         <header className="heading">
           <div>
@@ -486,6 +495,7 @@ export default function ScheduleWorkspace({
                 <option value="construction">Construction</option>
               </select>
             </label>
+            <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export look-ahead</button>
             <a href={`/projects/${project}`}>Project home & tasks</a>
             <a href={`/projects/${project}?tab=customer`}>Customer summary</a>
             {planningMode && (
@@ -722,11 +732,14 @@ export default function ScheduleWorkspace({
                     aria-label="Gantt zoom"
                     value={zoom}
                     onChange={(e) =>
-                      setZoom(e.target.value as "week" | "month")
+                      { setZoom(e.target.value as GanttZoom); setLookahead(0); setAnchor(activities.map(t => t.start).sort()[0] || today()); }
                     }
                   >
                     <option value="week">Week / day detail</option>
                     <option value="month">Month overview</option>
+                    <option value="six">6 months</option>
+                    <option value="year">12 months</option>
+                    <option value="project">Entire project</option>
                   </select>
                 </>
               )}
@@ -739,6 +752,7 @@ export default function ScheduleWorkspace({
                 links={snap.links}
                 baseline={snap.baseline}
                 zoom={zoom}
+                setAnchor={setAnchor}
                 busy={busy || stale}
                 collapsed={collapsed}
                 toggle={toggle}
@@ -1150,7 +1164,8 @@ type GanttProps = {
   all: Activity[];
   links: Link[];
   baseline: Snapshot["baseline"];
-  zoom: "week" | "month";
+  zoom: GanttZoom;
+  setAnchor: (s: string) => void;
   busy: boolean;
   collapsed: Set<string>;
   toggle: (id: string) => void;
@@ -1163,8 +1178,10 @@ type GanttProps = {
   anchor: string;
 };
 function Gantt(p: GanttProps) {
-  const cell = p.zoom === "week" ? 32 : 12,
-    rowHeight = 38;
+  const rowHeight = 38;
+  const broad = ["six", "year", "project"].includes(p.zoom);
+  const months = p.zoom === "six" ? 6 : 12;
+  const [available, setAvailable] = useState(1200);
   const [panelWidth, setPanelWidth] = useState(560);
   const [listHidden, setListHidden] = useState(false);
   const left = listHidden ? 0 : panelWidth;
@@ -1183,11 +1200,12 @@ function Gantt(p: GanttProps) {
         : []),
     ])
     .sort();
-  const start = p.lookahead ? p.anchor : shift(dates[0] || today(), -3),
+  const start = p.lookahead ? p.anchor : broad && p.zoom !== "project" ? monthShift(p.anchor, 0) : shift(dates[0] || today(), -3),
     end = p.lookahead
       ? shift(p.anchor, p.lookahead * 7 - 1)
-      : shift(dates.slice(-1)[0] || shift(today(), 28), 4),
+      : broad && p.zoom !== "project" ? shift(monthShift(start, months), -1) : shift(dates.slice(-1)[0] || shift(today(), 28), 4),
     count = distance(start, end) + 1;
+  const cell = broad ? Math.max(240, available - left - 2) / count : p.zoom === "week" ? 32 : 12;
   const viewport = useRef<HTMLDivElement>(null),
     gesture = useRef<{
       id: string;
@@ -1200,6 +1218,11 @@ function Gantt(p: GanttProps) {
     id: string;
     duration: number;
   } | null>(null);
+  useEffect(() => {
+    const el = viewport.current; if (!el) return;
+    const observer = new ResizeObserver(() => setAvailable(el.clientWidth));
+    observer.observe(el); setAvailable(el.clientWidth); return () => observer.disconnect();
+  }, [count > 5000]);
   if (count > 5000)
     return (
       <p className="notice warning">
@@ -1246,8 +1269,10 @@ function Gantt(p: GanttProps) {
         <button aria-expanded={!listHidden} onClick={() => setListHidden(v => !v)}>
           {listHidden ? "› Show task list" : "‹ Hide task list"}
         </button>
-        <span>Drag bars to move · Drag the right edge to resize</span>
-        <button onClick={() => { if (viewport.current) viewport.current.scrollLeft = Math.max(0, x(today()) - 100); }}>Today</button>
+        <span>{broad ? "Click a task to edit · Use day detail for drag scheduling" : "Drag bars to move · Drag the right edge to resize"}</span>
+        {broad && p.zoom !== "project" && <><button aria-label="Previous Gantt period" onClick={() => p.setAnchor(monthShift(start, -months))}>‹</button><input aria-label="Gantt start month" type="month" value={start.slice(0,7)} onChange={e => e.target.value && p.setAnchor(e.target.value+"-01")}/><button aria-label="Next Gantt period" onClick={() => p.setAnchor(monthShift(start, months))}>›</button></>}
+        {broad && <small>{readableDate(start)} – {readableDate(end)}</small>}
+        <button onClick={() => { if (broad && p.zoom !== "project") p.setAnchor(today()); else if (viewport.current) viewport.current.scrollLeft = Math.max(0, x(today()) - 100); }}>Today</button>
       </div>
     <div className={`gantt ${listHidden ? "list-hidden" : ""}`} ref={viewport} aria-label="Gantt chart">
       <div className="gantt-inner" style={{ width: left + count * cell }}>
@@ -1273,7 +1298,7 @@ function Gantt(p: GanttProps) {
                 >
                   {p.zoom === "week"
                     ? day(d).getUTCDate()
-                    : day(d).getUTCDay() === 1
+                    : !broad && day(d).getUTCDay() === 1
                       ? day(d).getUTCDate()
                       : ""}
                 </span>
@@ -1348,7 +1373,7 @@ function Gantt(p: GanttProps) {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
-                  if (p.busy) return;
+                  if (p.busy || broad) return;
                   const raw = e.dataTransfer.getData("application/fielddocs");
                   if (!raw) return;
                   try {
@@ -1381,16 +1406,17 @@ function Gantt(p: GanttProps) {
                   className={`bar ${colour(t)} ${t.is_milestone ? "milestone" : ""}`}
                   title={`${t.name}: ${readableDate(t.start)}–${readableDate(displayedFinish)}; ${t.float} work days float`}
                   style={{
-                    left: x(t.start) + 2,
+                    display: t.finish < start || t.start > end ? "none" : undefined,
+                    left: x(t.start) + (broad ? 0 : 2),
                     width: t.is_milestone
                       ? 14
                       : Math.max(
                           7,
-                          (distance(t.start, displayedFinish) + 1) * cell - 4,
+                          (distance(t.start, displayedFinish) + 1) * cell - (broad ? 0 : 4),
                         ),
                   }}
                   draggable={
-                    !p.busy && t.item_type === "task" && !gesture.current
+                    !p.busy && !broad && t.item_type === "task" && !gesture.current
                   }
                   onDragStart={(e) => {
                     if (gesture.current) {
@@ -1425,7 +1451,7 @@ function Gantt(p: GanttProps) {
                     style={{ width: t.progress + "%" }}
                   />
                   <span className="bar-text">{!t.is_milestone && t.name}</span>
-                  {t.item_type === "task" && !t.is_milestone && (
+                  {!broad && t.item_type === "task" && !t.is_milestone && (
                     <span
                       className="resize"
                       role="slider"
@@ -1482,7 +1508,7 @@ function Gantt(p: GanttProps) {
                   )}
                 </div>
                 <button className="timeline-task-name" onClick={() => p.open(t)}
-                  style={{left: x(displayedFinish) + cell + 7, top: 9}}
+                  style={{display: t.finish < start || t.start > end ? "none" : undefined, left: x(displayedFinish) + cell + 7, top: 9}}
                   title={`${t.name} · ${readableDate(t.start)}–${readableDate(displayedFinish)}`}>
                   {t.name}
                 </button>
@@ -1555,8 +1581,9 @@ type CalendarProps = {
   rows: Activity[];
   anchor: string;
   setAnchor: (s: string) => void;
-  mode: "week" | "month";
-  setMode: (s: "week" | "month") => void;
+  mode: CalendarMode;
+  setMode: (s: CalendarMode) => void;
+  embedded?: boolean;
   open: (t: Task) => void;
   add: (s: string) => void;
   move: (id: string, s: string) => Promise<void>;
@@ -1564,7 +1591,9 @@ type CalendarProps = {
 };
 function Calendar(p: CalendarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const first = p.mode === "month" ? p.anchor.slice(0, 7) + "-01" : p.anchor;
+  const multi = p.mode === "three" || p.mode === "six";
+  const monthCount = p.mode === "three" ? 3 : 6;
+  const first = p.mode !== "week" ? p.anchor.slice(0, 7) + "-01" : p.anchor;
   const monday = shift(first, -((day(first).getUTCDay() + 6) % 7));
   const weeks = Array.from({ length: p.mode === "month" ? 6 : 1 }, (_, i) =>
     shift(monday, i * 7),
@@ -1573,42 +1602,43 @@ function Calendar(p: CalendarProps) {
     if (p.mode === "week") p.setAnchor(shift(p.anchor, dir * 7));
     else {
       const d = day(p.anchor.slice(0, 7) + "-01");
-      d.setUTCMonth(d.getUTCMonth() + dir);
+      d.setUTCMonth(d.getUTCMonth() + dir * (multi ? monthCount : 1));
       p.setAnchor(fmt(d));
     }
   }
   return (
-    <section className="calendar">
-      <div className="calendar-tools">
+    <section className={`calendar ${p.embedded ? "calendar-embedded" : ""}`}>
+      {p.embedded ? <h3>{day(p.anchor).toLocaleDateString("en-CA", {month:"long",year:"numeric",timeZone:"UTC"})}</h3> : <div className="calendar-tools">
         <button aria-label="Previous period" onClick={() => navigate(-1)}>
           ‹
         </button>
         <h2>
-          {p.mode === "month"
+          {p.mode !== "week"
             ? day(p.anchor).toLocaleDateString("en-CA", {
                 month: "long",
                 year: "numeric",
                 timeZone: "UTC",
               })
             : short(monday) + " – " + short(shift(monday, 6))}
+          {multi && " – " + day(monthShift(p.anchor, monthCount - 1)).toLocaleDateString("en-CA", {month:"long",year:"numeric",timeZone:"UTC"})}
         </h2>
         <button aria-label="Next period" onClick={() => navigate(1)}>
           ›
         </button>
         <button onClick={() => p.setAnchor(today())}>Today</button>
         <div className="tabs">
-          {(["week", "month"] as const).map((m) => (
+          {(["week", "month", "three", "six"] as const).map((m) => (
             <button
               key={m}
               className={m === p.mode ? "selected" : ""}
               onClick={() => p.setMode(m)}
             >
-              {m === "week" ? "Week" : "Month"}
+              {m === "week" ? "Week" : m === "month" ? "Month" : m === "three" ? "3 months" : "6 months"}
             </button>
           ))}
         </div>
-      </div>
-      <div className="calendar-scroll">
+      </div>}
+      {multi ? <div className="calendar-months">{Array.from({length:monthCount}, (_, i) => <Calendar key={monthShift(p.anchor,i)} {...p} anchor={monthShift(p.anchor,i)} mode="month" embedded />)}</div> : <div className="calendar-scroll">
         <div className="weekday">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
             <b key={d}>{d}</b>
@@ -1727,7 +1757,7 @@ function Calendar(p: CalendarProps) {
             </div>
           );
         })}
-      </div>
+      </div>}
     </section>
   );
 }

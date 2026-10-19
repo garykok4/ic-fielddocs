@@ -8,7 +8,7 @@ export default function FeeVisual({result:r}:{result:ReturnType<typeof calculate
   {!r.combinedCharge&&<small>No charges at these inputs.</small>}
   <div className="fee-chart-legend">{parts.map(p=><span key={p.name}><i style={{background:p.color}}/>{p.name} {money(p.value)}</span>)}</div>
   <div className="fee-visual-budget"><span>Construction plus combined charge</span><strong>{money(r.totalBudget)}</strong></div>
-  <h2>Graduated PJM rates</h2><div className="fee-rate-bars">{r.bands.map((b,index)=><div className="fee-rate-row" key={b.name}><span>{b.name}</span><div className="fee-rate-track" aria-hidden="true"><i style={{width:`${b.rate/maxRate*100}%`}}/></div><strong>{(b.rate*100).toFixed(index===2?3:2)}%</strong></div>)}</div>
+  <h2>Graduated PJM rates</h2><div className="fee-rate-bars">{r.bands.map((b,index)=><div className="fee-rate-row" key={b.name}><span>{b.name}</span><div className="fee-rate-track" aria-hidden="true"><i style={{width:`${b.rate/maxRate*100}%`}}/></div><strong>{(b.rate*100).toFixed(r.bands.length===5&&index===2?3:2)}%</strong></div>)}</div>
   <p className="fee-fine">Each rate applies only to its cost band. No PJM is added to supervision or trailer. Rates shown are marginal rates, not shares of the total fee.</p>
  </section>;
 }

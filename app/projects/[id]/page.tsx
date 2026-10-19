@@ -1,4 +1,5 @@
 "use client";
+import CustomerTaskPicker from "../../../components/CustomerTaskPicker";
 import WorkDayCountdown from "../../../components/WorkDayCountdown";
 import {readableDate,readableDateTime} from "../../../lib/dates";
 import { useEffect, useRef, useState } from "react";
@@ -34,6 +35,7 @@ export default function ProjectWorkspace() {
     [tasks, setTasks] = useState<ProjectTask[]>([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const refreshSeq = useRef(0);
   async function refresh() {
     const seq = ++refreshSeq.current;
@@ -192,7 +194,7 @@ export default function ProjectWorkspace() {
               </div>
               <div className="grid">
                 <div className="panel">
-                  <h2>Path to construction</h2>
+                  <h2>Project schedule summary</h2>
                   {!planning.length ? (
                     <>
                       <p>
@@ -344,6 +346,7 @@ export default function ProjectWorkspace() {
               projectName={project?.project_name || "Project"}
             />
           )}
+          {pickerOpen && <CustomerTaskPicker key={id} project={id} close={() => setPickerOpen(false)} saved={s => {refreshSeq.current++; setSnapshot(s); setActivities(calculate(s.tasks,s.links));}} />}
           {tab === "customer" && (
             <>
               <div className="customer-title">
@@ -354,12 +357,13 @@ export default function ProjectWorkspace() {
               </div>
               <div className="bar">
                 <div>
-                  <h2>Path to construction</h2>
+                  <h2>Project schedule summary</h2>
                   <p className="muted">
                     Prepared {readableDate(today())} · Dates reflect the current dependency
                     schedule.
                   </p>
                 </div>
+                <button className="no-print" onClick={() => setPickerOpen(true)}>Add tasks to customer summary</button>
                 <button className="no-print" onClick={() => window.print()}>
                   Print / save PDF
                 </button>
@@ -372,8 +376,7 @@ export default function ProjectWorkspace() {
               </p>
               {!visible.length ? (
                 <div className="panel empty">
-                  No activities selected for this summary. Edit an activity and
-                  check “Include in customer summary.”
+                  No activities selected for this summary. Click “Add tasks to customer summary” to choose activities.
                 </div>
               ) : (
                 <div className="tablewrap">
