@@ -1,5 +1,5 @@
 import { LookaheadReport, daysBetween, validateLookahead } from "./lookahead";
-import { holidayOn, isWorkDay, isoDay, shiftDate } from "./work-calendar";
+import { projectCalendar, holidayOn as ontarioHolidayOn, isWorkDay as defaultWorkDay, isoDay, shiftDate } from "./work-calendar";
 import { readableDate, readableDateTime } from "./dates";
 import type { jsPDF } from "jspdf";
 const clean = (s: string) =>
@@ -9,6 +9,8 @@ const clean = (s: string) =>
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7e\n\r\t\u00a0-\u00ff]/g, "?");
 export async function createLookaheadPdf(report: LookaheadReport, providedFonts?: {regular:string;bold:string}) {
+  const isWorkDay=projectCalendar(report.closures).work;
+  const holidayOn=(date:string)=>ontarioHolidayOn(date)||(report.closures?.includes(date)?{date,name:"Project shutdown",observed:false,actualDate:date}:undefined);
   validateLookahead(report.options);
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({
@@ -406,7 +408,7 @@ export async function createLookaheadPdf(report: LookaheadReport, providedFonts?
           .filter((l) => l.successor_id === t.id)
           .map(
             (l) =>
-              `#${numbers.get(l.predecessor_id)} (${l.lag_work_days >= 0 ? "+" : ""}${l.lag_work_days} work days)`,
+              `${l.relation||"FS"} #${numbers.get(l.predecessor_id)} (${l.lag_work_days >= 0 ? "+" : ""}${l.lag_work_days} work days)`,
           )
           .join(", ")
       : "";

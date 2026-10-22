@@ -147,7 +147,7 @@ export default function RootLayout({
             >
               <div className="nav-section">WORKSPACE</div>
               {primary.map(([href, label, icon]) => item(href, label, icon))}
-              {(canEstimate || profile?.role === "admin") && <><div className="nav-section">ESTIMATING</div>{item("/estimating/preliminary", "Preliminary budgets", "▤")}{item("/estimating", "Fee calculator", "◇")}</>}
+              {(canEstimate || profile?.role === "admin") && <><div className="nav-section">ESTIMATING</div>{item("/estimating/preliminary", "Preliminary budgets", "▤")}{item("/estimating", "Fee calculator", "◇")}{item("/opportunities", "Opportunities")}</>}
               <div className="nav-section">FIELD RECORDS</div>
               <details open={pathname.startsWith("/reports")}>
                 <summary>Reports</summary>
@@ -171,7 +171,6 @@ export default function RootLayout({
                   <div className="nav-section">ADMINISTRATION</div>
                   {item("/admin/project-staff", "Project team")}
                   {item("/admin/notifications", "Notification delivery")}
-                  {item("/opportunities", "Opportunities")}
                 </>
               )}
               <div className="sidebar-footer">

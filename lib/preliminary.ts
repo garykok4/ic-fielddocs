@@ -1,4 +1,4 @@
-import { calculateFee, DEFAULT_INPUTS } from "./fee-calculator";
+import { calculateFee, DEFAULT_INPUTS, FeeBand } from "./fee-calculator";
 export const PRELIM_VERSION = "class-d-v1";
 export const FIELDS = [
   ["footprint", "Building footprint", "sf", 10000, 1e8],
@@ -81,17 +81,20 @@ export const OPTIONS = {
     "Insulated metal panels",
     "Metal siding",
     "Brick veneer",
+    "Regular clay brick veneer",
     "Precast panels",
     "Mixed / custom",
   ],
   roofStructure: [
     "Steel deck and joists",
+    "Steel beams and purlins",
     "Wood trusses",
     "Concrete roof",
     "Custom",
   ],
   roofFinish: [
     "Single-ply membrane",
+    "Insulated metal panel (IMP) roof",
     "Metal roofing",
     "Modified bitumen",
     "Shingles",
@@ -119,6 +122,7 @@ export type LineEdit = {
   notes: string;
 };
 export type BudgetDraft = {
+  feeBands?: FeeBand[];
   version: string;
   inputs: BudgetInputs;
   lines: Record<string, LineEdit>;
@@ -646,6 +650,7 @@ export function estimateBudget(d: BudgetDraft) {
   const fee = calculateFee(
     {
       ...DEFAULT_INPUTS,
+      bands: d.feeBands,
       constructionCost: eligible,
       projectMonths: i.months,
       supervisorAnnualCost: i.supervisorAnnual,
@@ -654,7 +659,7 @@ export function estimateBudget(d: BudgetDraft) {
       trailerMonthlyCost: i.trailerMonthly,
       trailerSetup: i.trailerSetup,
     },
-    "scheps-v2",
+    d.feeBands ? "scheps-v3" : "scheps-v2",
   );
   const budget = eligible + engineering + architect + fee.combinedCharge;
   return {

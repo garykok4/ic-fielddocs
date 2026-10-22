@@ -1,8 +1,10 @@
 "use client";
 import {readableDate} from "../../lib/dates";
-import {holidayOn,dueCountdown} from "../../lib/work-calendar";
+import {projectCalendar,validDate,holidayOn,dueCountdown} from "../../lib/work-calendar";
 import WorkDayCountdown from "../../components/WorkDayCountdown";
 import OntarioCalendarInfo from "../../components/OntarioCalendarInfo";
+import ScheduleDraftBuilder from "../../components/ScheduleDraftBuilder";
+import WeekReviewExport from "../../components/WeekReviewExport";
 import LookaheadExport from "../../components/LookaheadExport";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { requireActiveStaff } from "../../lib/auth";
@@ -95,14 +97,18 @@ export default function ScheduleWorkspace({
   fixedProject?: string;
   planningMode?: boolean;
 }) {
+  const [draftMode,setDraftMode]=useState<"import"|"ai"|null>(null);
+  const [closureText,setClosureText]=useState("");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [exportOpen,setExportOpen]=useState(false);
+  const [reviewOpen,setReviewOpen]=useState(false);
   const [stageFilter, setStageFilter] = useState(
     planningMode ? "preconstruction" : "",
   );
   const [projects, setProjects] = useState<Project[]>([]),
     [project, setProject] = useState(""),
     [snap, setSnap] = useState<Snapshot | null>(null);
+  const cal=projectCalendar(snap?.closures||[]),normalize=cal.normalize,addWork=cal.add,workDistance=cal.distance;
   const [view, setView] = useState<View>("gantt"),
     [zoom, setZoom] = useState<GanttZoom>("week"),
     [calendarMode, setCalendarMode] = useState<CalendarMode>("month"),
@@ -184,10 +190,11 @@ export default function ScheduleWorkspace({
     const seq = ++loadSeq.current;
     setError("");
     try {
-      const r = await supabase.rpc("schedule_v4_read", { p_project: id });
+      const r = await supabase.rpc("schedule_v75_read", { p_project: id });
       if (r.error) throw r.error;
       if (seq === loadSeq.current && projectRef.current === id) {
         setSnap(clean(r.data as Snapshot));
+        setClosureText((r.data.closures||[]).join("\n"));
         setStale(false);
         setUndo(null);
         setEditing(null);
@@ -214,7 +221,7 @@ export default function ScheduleWorkspace({
     let canceled = false;
     async function check() {
       if (activeMutation.current) return;
-      const r = await supabase.rpc("schedule_v4_read", { p_project: project });
+      const r = await supabase.rpc("schedule_v75_read", { p_project: project });
       if (!canceled && !r.error && r.data?.revision !== snap?.revision)
         setStale(true);
     }
@@ -229,7 +236,7 @@ export default function ScheduleWorkspace({
   const calculated = useMemo(() => {
     if (!snap) return { rows: [] as Activity[], problem: "" };
     try {
-      return { rows: calculate(snap.tasks, snap.links), problem: "" };
+      return { rows: calculate(snap.tasks, snap.links, undefined, snap.closures), problem: "" };
     } catch (e) {
       return { rows: [] as Activity[], problem: (e as Error).message };
     }
@@ -296,16 +303,18 @@ export default function ScheduleWorkspace({
       validate(next.tasks, next.links);
       activeMutation.current = true;
       setBusy(true);
-      const r = await supabase.rpc("schedule_v5_save", {
+      const r = await supabase.rpc("schedule_v75_save", {
         p_project: id,
         p_revision: before.revision,
         p_tasks: next.tasks,
         p_links: next.links,
         p_baseline: next.baseline,
+        p_closures: next.closures || [],
       });
       if (r.error) throw r.error;
       if (projectRef.current !== id) return false;
       setSnap(clean(r.data as Snapshot));
+      setClosureText((r.data.closures||[]).join("\n"));
       setUndo(remember ? before : null);
       setStale(false);
       setMessage(label + " saved.");
@@ -342,8 +351,8 @@ export default function ScheduleWorkspace({
       .filter((l) => l.successor_id === id)
       .map((l) =>
         addWork(
-          activities.find((t) => t.id === l.predecessor_id)!.finish,
-          1 + l.lag_work_days,
+          l.relation === "SS" ? activities.find((t) => t.id === l.predecessor_id)!.start : activities.find((t) => t.id === l.predecessor_id)!.finish,
+          (l.relation === "SS" ? 0 : 1) + l.lag_work_days,
         ),
       )
       .sort()
@@ -455,8 +464,14 @@ export default function ScheduleWorkspace({
     projects.find((p) => p.id === project)?.project_name || "Project";
   return (
     <main className="fd">
+      {draftMode&&snap&&<ScheduleDraftBuilder key={project} project={project} snapshot={snap} mode={draftMode} close={()=>setDraftMode(null)} saved={s=>{loadSeq.current++;setSnap(clean(s));setClosureText((s.closures||[]).join("\n"));setUndo(null);setStale(false);setMessage("Schedule draft imported. Review the resulting project dates.");}}/>}
+      {reviewOpen&&<WeekReviewExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project"} close={()=>setReviewOpen(false)}/>}
       {exportOpen&&<LookaheadExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project schedule"} defaultFormat={view==='calendar'?'calendar':'gantt'} close={()=>setExportOpen(false)}/>}
       <div className="screen">
+      {snap&&<><div className="toolbar"><button disabled={busy||stale} onClick={()=>setDraftMode("import")}>Import schedule</button><button disabled={busy||stale} onClick={()=>setDraftMode("ai")}>Build with AI</button></div>
+      <details><summary>Project shutdown dates ({snap.closures?.length||0})</summary><p>Additional to Ontario holidays. Changing these dates recalculates every activity in the project.</p><label>Shutdown dates (YYYY-MM-DD, one per line)<textarea aria-label="Project shutdown dates" value={closureText} onChange={e=>setClosureText(e.target.value)}/></label><button disabled={busy||stale} onClick={()=>{const dates=closureText.split(/[\s,;]+/).filter(Boolean);if(dates.some(d=>!validDate(d))){setError("Enter valid YYYY-MM-DD shutdown dates.");return;}void commit({...snap,closures:[...new Set(dates)].sort()},"Project calendar");}}>Save shutdown dates</button></details>
+      {!!snap.import_history?.length&&<details><summary>Imported schedule assumptions & sources</summary>{snap.import_history.map((h,i)=><article key={i}><h3>{h.metadata.source}</h3><p>{h.created_at} · Target {h.metadata.target||"not specified"}</p><p style={{whiteSpace:"pre-wrap"}}>{h.metadata.assumptions}</p></article>)}</details>}</>}
+
         <header className="heading">
           <div>
             <div className="eyebrow">FIELD DOCS / SCHEDULING</div>
@@ -496,6 +511,7 @@ export default function ScheduleWorkspace({
               </select>
             </label>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export look-ahead</button>
+            <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setReviewOpen(true)}>Export week in review</button>
             <a href={`/projects/${project}`}>Project home & tasks</a>
             <a href={`/projects/${project}?tab=customer`}>Customer summary</a>
             {planningMode && (
@@ -747,6 +763,7 @@ export default function ScheduleWorkspace({
             </div>
             {view === "gantt" && !calculated.problem && (
               <Gantt
+                closures={snap.closures}
                 rows={rows}
                 all={activities}
                 links={snap.links}
@@ -767,6 +784,7 @@ export default function ScheduleWorkspace({
             )}
             {view === "calendar" && !calculated.problem && (
               <Calendar
+                closures={snap.closures}
                 rows={matched}
                 anchor={anchor}
                 setAnchor={setAnchor}
@@ -1160,6 +1178,7 @@ function Inline({
 }
 
 type GanttProps = {
+  closures?:string[];
   rows: Activity[];
   all: Activity[];
   links: Link[];
@@ -1178,6 +1197,7 @@ type GanttProps = {
   anchor: string;
 };
 function Gantt(p: GanttProps) {
+  const cal=projectCalendar(p.closures),work=cal.work,addWork=cal.add,finish=cal.finish,durationTo=(s:string,f:string)=>Math.max(1,cal.distance(s,f)+1);
   const rowHeight = 38;
   const broad = ["six", "year", "project"].includes(p.zoom);
   const months = p.zoom === "six" ? 6 : 12;
@@ -1554,8 +1574,8 @@ function Gantt(p: GanttProps) {
               critical =
                 a.critical &&
                 b.critical &&
-                addWork(a.finish, 1 + l.lag_work_days) === b.start;
-            const x1 = x(a.finish) + cell - 2,
+                addWork(l.relation === "SS" ? a.start : a.finish, (l.relation === "SS" ? 0 : 1) + l.lag_work_days) === b.start;
+            const x1 = l.relation === "SS" ? x(a.start) + 2 : x(a.finish) + cell - 2,
               x2 = x(b.start) + 2,
               y1 = i * rowHeight + 19,
               y2 = j * rowHeight + 19;
@@ -1578,6 +1598,7 @@ function Gantt(p: GanttProps) {
 }
 
 type CalendarProps = {
+  closures?:string[];
   rows: Activity[];
   anchor: string;
   setAnchor: (s: string) => void;
@@ -1590,6 +1611,7 @@ type CalendarProps = {
   busy: boolean;
 };
 function Calendar(p: CalendarProps) {
+  const work=projectCalendar(p.closures).work;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const multi = p.mode === "three" || p.mode === "six";
   const monthCount = p.mode === "three" ? 3 : 6;
@@ -1774,6 +1796,7 @@ type EditorProps = {
   save: (t: Task, l: Link[]) => Promise<void>;
 };
 function Editor(p: EditorProps) {
+  const workDistance=projectCalendar(p.snapshot.closures).distance;
   const [task, setTask] = useState({ ...p.task }),
     [links, setLinks] = useState(
       p.snapshot.links
@@ -2073,10 +2096,9 @@ function Editor(p: EditorProps) {
                   </label>
                 </div>
                 <fieldset>
-                  <legend>Finish-to-start predecessors</legend>
+                  <legend>Predecessors and overlaps</legend>
                   <p>
-                    Lag uses Monday–Friday work days. Zero starts on the next
-                    workday. All links save with this activity.
+                    Offsets use the project working calendar. FS zero starts the next workday; SS zero starts with the predecessor. Negative offsets overlap work. All links save with this activity.
                   </p>
                   {links.map((l, i) => (
                     <div className="dependency" key={l.id}>
@@ -2109,12 +2131,13 @@ function Editor(p: EditorProps) {
                             ))}
                         </select>
                       </label>
+                      <label>Relationship<select aria-label="Dependency relationship" value={l.relation || "FS"} onChange={e=>setLinks(links.map((x,j)=>i===j?{...x,relation:e.target.value as "FS"|"SS"}:x))}><option value="FS">Finish to start</option><option value="SS">Start to start</option></select></label>
                       <label>
                         Lag
                         <input
                           aria-label="Lag work days"
                           type="number"
-                          min={0}
+                          min={-10000}
                           max={10000}
                           step={1}
                           value={l.lag_work_days}

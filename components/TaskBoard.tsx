@@ -120,7 +120,7 @@ export default function TaskBoard({
           editing.project_id ? supabase.rpc("fielddocs_project_team", {
             p_project: editing.project_id,
           }) : supabase.rpc("fielddocs_general_task_team"),
-          editing.project_id ? supabase.rpc("schedule_v4_read", { p_project: editing.project_id }) : Promise.resolve({data:{tasks:[]},error:null}),
+          editing.project_id ? supabase.rpc("schedule_v75_read", { p_project: editing.project_id }) : Promise.resolve({data:{tasks:[]},error:null}),
           isNew
             ? Promise.resolve({ data: [], error: null })
             : supabase

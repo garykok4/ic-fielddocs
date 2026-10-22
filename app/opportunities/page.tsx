@@ -1,80 +1,24 @@
-﻿"use client";
-
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-
-export default function OpportunitiesPage() {
-  const [opportunities, setOpportunities] = useState<any[]>([]);
-
-  useEffect(() => {
-    async function loadOpportunities() {
-      const { data, error } = await supabase
-        .from("opportunities")
-        .select("*")
-        .order("opportunity_score", { ascending: false });
-
-      if (error) {
-        console.error("Error loading opportunities:", error);
-        return;
-      }
-
-      setOpportunities(data || []);
-    }
-
-    loadOpportunities();
-  }, []);
-
-  return (
-    <main style={{ padding: 24 }}>
-      <h1>Opportunities</h1>
-      <p>Hidden opportunity scanner module.</p>
-      <p><a href="/estimating">Open internal fee calculator →</a></p>
-
-      <button
-        style={{
-          marginTop: 20,
-          marginBottom: 20,
-          padding: "10px 16px",
-          borderRadius: 6,
-          border: "none",
-          background: "#111827",
-          color: "white",
-          cursor: "pointer",
-        }}
-      >
-        + Add Opportunity
-      </button>
-
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
-            <th style={{ padding: 10 }}>Score</th>
-            <th style={{ padding: 10 }}>Project</th>
-            <th style={{ padding: 10 }}>Type</th>
-            <th style={{ padding: 10 }}>Municipality</th>
-            <th style={{ padding: 10 }}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {opportunities.length === 0 ? (
-            <tr>
-              <td colSpan={5} style={{ padding: 10 }}>
-                No opportunities yet.
-              </td>
-            </tr>
-          ) : (
-            opportunities.map((opp) => (
-              <tr key={opp.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: 10 }}>{opp.opportunity_score ?? 0}</td>
-                <td style={{ padding: 10 }}>{opp.title || "Untitled"}</td>
-                <td style={{ padding: 10 }}>{opp.project_type || "-"}</td>
-                <td style={{ padding: 10 }}>{opp.municipality || "-"}</td>
-                <td style={{ padding: 10 }}>{opp.status || "Lead"}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </main>
-  );
+"use client";
+import {useEffect,useState} from 'react';
+import {supabase} from '../../lib/supabase';
+import {requireActiveStaff} from '../../lib/auth';
+import {OpportunityLead,SCAN_SOURCES,canonicalUrl} from '../../lib/opportunities';
+import {readableDateTime} from '../../lib/dates';
+import '../estimating/estimating.css';
+export default function OpportunitiesPage(){
+ const [rows,setRows]=useState<OpportunityLead[]>([]),[loading,setLoading]=useState(true),[allowed,setAllowed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[last,setLast]=useState<any>(null),[query,setQuery]=useState(''),[selected,setSelected]=useState<string[]>([]),[editing,setEditing]=useState<OpportunityLead|null>(null);
+ async function load(){const all:OpportunityLead[]=[];for(let from=0;;from+=500){const r=await supabase.from('fd_opportunity_leads').select('*').is('merged_into',null).order('opportunity_score',{ascending:false}).order('id').range(from,from+499);if(r.error)throw r.error;all.push(...r.data||[]);if((r.data||[]).length<500)break;}setRows(all);const r=await supabase.from('fd_opportunity_scans').select('*').order('started_at',{ascending:false}).limit(1);if(r.error)throw r.error;setLast(r.data?.[0]||null);}
+ useEffect(()=>{(async()=>{try{if(!await requireActiveStaff())return;const p=await supabase.rpc('fielddocs_can_estimate');if(p.error)throw p.error;setAllowed(p.data===true);if(p.data)await load();}catch(e){setError((e as Error).message);}finally{setLoading(false);}})();},[]);
+ async function scan(){if(busy)return;setBusy(true);setError('');setNotice('Scanning 14 source groups. This can take about 30 seconds…');try{const session=await supabase.auth.getSession();const token=session.data.session?.access_token;if(!token)throw Error('Sign in again.');const r=await fetch('/api/opportunity-scanner',{method:'POST',headers:{Authorization:`Bearer ${token}`}});const body=await r.json();if(!r.ok)throw Error(body.error||'Scan failed');const failed=body.sources.filter((s:any)=>s.error).length;setNotice(`Scan finished: ${body.added} added, ${body.matched} repeat matches grouped. ${failed} source groups failed.`);await load();}catch(e){setNotice('');setError((e as Error).message);}finally{setBusy(false);}}
+ async function save(){if(!editing||busy)return;setBusy(true);setError('');try{const r=await supabase.rpc('fd_opportunity_edit',{p_id:editing.id,p_updated:editing.updated_at,p_status:editing.status,p_notes:editing.notes});if(r.error)throw r.error;setEditing(null);await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ async function merge(){if(selected.length<2||busy)return;const keep=rows.find(r=>r.id===selected[0]);if(!confirm(`Keep “${keep?.title}” and group ${selected.length-1} duplicates beneath it? All sources and notes are retained. The first selected lead keeps its status.`))return;setBusy(true);setError('');try{const r=await supabase.rpc('fd_opportunity_merge',{p_keep:selected[0],p_others:selected.slice(1)});if(r.error)throw r.error;setSelected([]);await load();setNotice('Duplicates merged. Their source URLs will match the retained lead on future scans.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ if(loading)return <main className="fee-page">Loading opportunities…</main>;
+ if(!allowed)return <main className="fee-page"><h1>Opportunities</h1><p>{error||'Estimating access required. Ask an administrator to grant access.'}</p></main>;
+ const shown=rows.filter(r=>`${r.title} ${r.municipality} ${r.status}`.toLowerCase().includes(query.toLowerCase()));
+ return <main className="fee-page"><header className="fee-heading"><div><div className="fee-eyebrow">I/C CONSTRUCTION / BUSINESS DEVELOPMENT</div><h1>Opportunities</h1><p>Ontario construction, manufacturing, food processing and commercial leads.</p></div><button className="fee-primary" disabled={busy||!!editing} onClick={()=>void scan()}>{busy?'Working…':'Scan for opportunities'}</button></header>
+ <p><a href="/estimating">Fee calculator</a> · <a href="/estimating/preliminary">Preliminary budgets</a></p>{error&&<p role="alert" className="fee-error">{error}</p>}{notice&&<p role="status" className="fee-notice">{notice}</p>}
+ <details className="fee-panel"><summary>Scan coverage and latest results</summary><p>Public Google News searches across these source/topic groups. This does not directly crawl private tender portals or all municipal planning applications. Results cover up to 180 days and require review; publication is not confirmation that bidding is still open.</p><ul>{SCAN_SOURCES.map(([name])=><li key={name}>{name}</li>)}</ul>{last?<><p>Last scan: {readableDateTime(last.started_at)} · {last.finished_at?'Finished':'Started; refresh for result'}</p>{last.summary?.error&&<p>{last.summary.error}</p>}{last.summary?.sources?.map((s:any)=><p key={s.name}>{s.name}: {s.error?`Failed — ${s.error}`:`${s.count} matching articles`}</p>)}</>:<p>No scan yet. The first scan also imports and groups entries from your previous tracker.</p>}</details>
+ <div className="fee-actions"><label>Search leads<input value={query} onChange={e=>setQuery(e.target.value)}/></label><button disabled={busy} onClick={()=>void load().catch(e=>setError(e.message))}>Refresh</button><button disabled={busy||selected.length<2||!!editing} onClick={()=>void merge()}>Merge selected duplicates ({selected.length})</button><button onClick={()=>setSelected([])}>Clear selection</button></div><p>Exact source URLs and normalized headlines are grouped automatically. For different articles about the same project, select the lead to keep first, then its duplicates and click Merge. Different projects by the same company remain separate.</p>
+ {editing&&<section className="fee-panel"><h2>{editing.title}</h2><label>Status<select value={editing.status} onChange={e=>setEditing({...editing,status:e.target.value})}>{['Lead','Researching','Contacted','Qualified','Tendering','Won','Lost','Not pursuing',...(!['Lead','Researching','Contacted','Qualified','Tendering','Won','Lost','Not pursuing'].includes(editing.status)?[editing.status]:[])].map(s=><option key={s}>{s}</option>)}</select></label><label>Notes<textarea rows={5} maxLength={20000} value={editing.notes} onChange={e=>setEditing({...editing,notes:e.target.value})}/></label><button disabled={busy} onClick={()=>void save()}>Save lead</button><button disabled={busy} onClick={()=>setEditing(null)}>Cancel</button></section>}
+ <div className="fee-table"><table><thead><tr><th>Merge</th><th>Score</th><th>Opportunity</th><th>Location / type</th><th>Status</th></tr></thead><tbody>{shown.map(r=><tr key={r.id}><td><input type="checkbox" aria-label={`Select ${r.title}`} checked={selected.includes(r.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,r.id]:ids.filter(id=>id!==r.id))}/></td><td>{r.opportunity_score}</td><td><button className="fee-text" disabled={busy} onClick={()=>setEditing({...r})}>{r.title}</button><details><summary>{r.sources.length} sources</summary><p>{r.description}</p>{r.sources.map((s,i)=><p key={i}>{canonicalUrl(s.url)?<a href={s.url} target="_blank" rel="noreferrer">{s.title||s.name}</a>:s.title} · {s.name}{s.published?` · ${readableDateTime(s.published)}`:''}</p>)}</details></td><td>{r.municipality||'Location to verify'}<br/>{r.project_type}</td><td>{r.status}</td></tr>)}</tbody></table></div>{!shown.length&&<p>No matching opportunities. Run a scan to import existing leads and search for new coverage.</p>}</main>;
 }

@@ -3,9 +3,10 @@ import {useEffect,useMemo,useState} from 'react';
 import {supabase} from '../../lib/supabase';
 import {requireActiveStaff} from '../../lib/auth';
 import {getProjects,Person,Project} from '../../lib/project-work';
-import {BENCHMARK,DEFAULT_INPUTS,TILLCO_INPUTS,MAX_HISTORICAL_TRAILER,MODEL_VERSION,FeeInputs,FeeScenario,calculateFee,money} from '../../lib/fee-calculator';
+import {BENCHMARK,DEFAULT_INPUTS,TILLCO_INPUTS,MAX_HISTORICAL_TRAILER,MODEL_VERSION,DEFAULT_BANDS,FeeInputs,FeeScenario,calculateFee,money} from '../../lib/fee-calculator';
 import {readableDateTime} from '../../lib/dates';
 import './estimating.css';
+import FeeBandEditor from "../../components/FeeBandEditor";
 import FeeVisual from '../../components/FeeVisual';
 import FeeNumberInput from '../../components/FeeNumberInput';
 import {exportFeePdf} from '../../lib/fee-print';
@@ -26,10 +27,10 @@ export default function EstimatingPage(){
  function replaceDraft(action:()=>void){if(busy)return;if(dirty&&!confirm('Discard unsaved changes to this estimate?'))return;action();setError('');setNotice('');}
  function newEstimate(benchmark=false){replaceDraft(()=>{setCurrent(null);setName(benchmark?'Tillco reconciliation':'New fee estimate');setInputs({...benchmark?TILLCO_INPUTS:DEFAULT_INPUTS});setProject('');setNotes('');setDirty(false)})}
  function open(s:FeeScenario){replaceDraft(()=>{setCurrent(s);setName(s.name);setInputs({...s.inputs});setProject(s.project_id||'');setNotes(s.notes);setDirty(false)})}
- async function save(copy=false){if(busy||!result||!name.trim())return;setBusy(true);setError('');setNotice('');try{const r=await supabase.rpc('fielddocs_fee_save_v2',{p_id:copy?null:current?.id||null,p_revision:copy?null:current?.revision??null,p_name:copy?`${name.slice(0,143)} (copy)`:name,p_project:project||null,p_notes:notes,p_inputs:inputs,p_model:modelVersion});if(r.error)throw r.error;const saved=r.data as FeeScenario;setCurrent(saved);setName(saved.name);setDirty(false);setNotice(copy?'Scenario copied and saved.':'Scenario saved.');await readScenarios();}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function save(copy=false){if(busy||!result||!name.trim())return;setBusy(true);setError('');setNotice('');try{const r=await supabase.rpc('fielddocs_fee_save_v3',{p_id:copy?null:current?.id||null,p_revision:copy?null:current?.revision??null,p_name:copy?`${name.slice(0,143)} (copy)`:name,p_project:project||null,p_notes:notes,p_inputs:inputs,p_model:modelVersion});if(r.error)throw r.error;const saved=r.data as FeeScenario;setCurrent(saved);setName(saved.name);setDirty(false);setNotice(copy?'Scenario copied and saved.':'Scenario saved.');await readScenarios();}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function remove(s:FeeScenario){if(busy||!confirm(`Delete saved scenario “${s.name}”? This cannot be undone.`))return;setBusy(true);setError('');try{const r=await supabase.rpc('fielddocs_fee_delete',{p_id:s.id,p_revision:s.revision});if(r.error)throw r.error;if(current?.id===s.id){setCurrent(null);setDirty(true)}setCompare(ids=>ids.filter(id=>id!==s.id));await readScenarios();setNotice('Saved scenario deleted.');}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function grant(p:AccessPerson){if(busy)return;setBusy(true);setError('');try{const r=await supabase.rpc('fielddocs_estimating_grant',{p_staff:p.id,p_allowed:!p.can_estimate});if(r.error)throw r.error;await readTeam();setNotice('Estimating access updated.')}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- function numberField(key:Exclude<keyof FeeInputs,'trailerRequired'>,label:string,max:number,help?:string){return <label>{label}<FeeNumberInput value={inputs[key]} max={max} onChange={value=>change(key,value)}/>{help&&<small>{help}</small>}</label>}
+ function numberField(key:Exclude<keyof FeeInputs,'trailerRequired'|'bands'>,label:string,max:number,help?:string){return <label>{label}<FeeNumberInput value={inputs[key]} max={max} onChange={value=>change(key,value)}/>{help&&<small>{help}</small>}</label>}
  function exportPdf(){try{exportFeePdf(name,projects.find(p=>p.id===project)?.project_name||(project?'Linked project':'Standalone estimate'),notes,inputs,modelVersion)}catch(e){setError((e as Error).message)}}
  if(loading)return <main className="fee-page"><p>Opening estimating…</p></main>;
  if(!allowed)return <main className="fee-page"><h1>Estimating</h1><p role="alert">{error||'Estimating access required. Ask an administrator to enable your access.'}</p></main>;
@@ -47,6 +48,7 @@ export default function EstimatingPage(){
    <h3>Site trailer</h3><label className="fee-check"><input type="checkbox" checked={inputs.trailerRequired} onChange={e=>change('trailerRequired',e.target.checked)}/>Trailer required</label>
    {inputs.trailerRequired&&<div className="fee-grid">{numberField('trailerMonthlyCost','Monthly trailer cost',1e7)}{numberField('trailerSetup','Delivery and setup allowance',1e9)}</div>}<small>The trailer is allowed for the full project duration. No PJM markup applies to site costs.</small>
 
+   {modelVersion===MODEL_VERSION ? <FeeBandEditor value={inputs.bands||DEFAULT_BANDS} onChange={bands=>change("bands",bands)}/> : <p>This saved estimate keeps its original rates. <button type="button" onClick={()=>{setInputs({...inputs,bands:result!.bands.map(b=>({upper:Number.isFinite(b.upper)?b.upper:null,percent:b.rate*100}))});setCurrent(null);setName(name.slice(0,130)+" (custom rates)");setDirty(true);}}>Customize rates in a copy</button></p>}
    <label>Notes<textarea maxLength={5000} rows={3} value={notes} onChange={e=>{setNotes(e.target.value);setDirty(true)}}/></label>
   </fieldset><div className="fee-actions no-print"><button className="fee-primary" disabled={busy||!result||!name.trim()} onClick={()=>void save()}>{busy?'Working…':current?'Save changes':'Save scenario'}</button><button disabled={busy||!result||!name.trim()} onClick={()=>void save(true)}>Save a copy</button><span>{dirty?'Unsaved changes':current?'Saved':'Draft'}</span></div>{current&&<small>Last saved {readableDateTime(current.updated_at)}</small>}</section>
   <section className="fee-output">{!result?<p role="alert" className="fee-error">{calculation.error}</p>:<>

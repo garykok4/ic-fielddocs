@@ -1,4 +1,6 @@
 "use client";
+import CostControl from "../../../components/CostControl";
+import WeekReviewExport from "../../../components/WeekReviewExport";
 import CustomerTaskPicker from "../../../components/CustomerTaskPicker";
 import WorkDayCountdown from "../../../components/WorkDayCountdown";
 import {readableDate,readableDateTime} from "../../../lib/dates";
@@ -23,6 +25,7 @@ const tabs = [
   ["schedule", "Schedule"],
   ["tasks", "Tasks"],
   ["files", "Files"],
+  ["costs", "Cost control"],
   ["customer", "Customer summary"],
 ];
 export default function ProjectWorkspace() {
@@ -36,18 +39,19 @@ export default function ProjectWorkspace() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const refreshSeq = useRef(0);
   async function refresh() {
     const seq = ++refreshSeq.current;
     setError("");
     try {
       const [s, t] = await Promise.all([
-        supabase.rpc("schedule_v4_read", { p_project: id }),
+        supabase.rpc("schedule_v75_read", { p_project: id }),
         supabase.from("project_tasks").select("*").eq("project_id", id),
       ]);
       if (s.error || t.error) throw s.error || t.error;
       if (seq !== refreshSeq.current) return;
-      setActivities(calculate(s.data.tasks, s.data.links));
+      setActivities(calculate(s.data.tasks, s.data.links, undefined, s.data.closures));
       setSnapshot(s.data);
       setTasks(t.data || []);
     } catch (e) {
@@ -346,7 +350,9 @@ export default function ProjectWorkspace() {
               projectName={project?.project_name || "Project"}
             />
           )}
-          {pickerOpen && <CustomerTaskPicker key={id} project={id} close={() => setPickerOpen(false)} saved={s => {refreshSeq.current++; setSnapshot(s); setActivities(calculate(s.tasks,s.links));}} />}
+          {tab === "costs" && <CostControl key={id} project={id} projectName={project?.project_name || "Project"}/>}
+          {reviewOpen && <WeekReviewExport key={id} project={id} projectName={project?.project_name || "Project"} close={() => setReviewOpen(false)} />}
+          {pickerOpen && <CustomerTaskPicker key={id} project={id} close={() => setPickerOpen(false)} saved={s => {refreshSeq.current++; setSnapshot(s); setActivities(calculate(s.tasks,s.links, undefined, s.closures));}} />}
           {tab === "customer" && (
             <>
               <div className="customer-title">
@@ -364,6 +370,7 @@ export default function ProjectWorkspace() {
                   </p>
                 </div>
                 <button className="no-print" onClick={() => setPickerOpen(true)}>Add tasks to customer summary</button>
+                <button className="no-print" onClick={() => setReviewOpen(true)}>Export week in review</button>
                 <button className="no-print" onClick={() => window.print()}>
                   Print / save PDF
                 </button>

@@ -48,13 +48,13 @@ export default function Dashboard() {
       const result = await Promise.all(
         projects.map(async (project) => {
           try {
-            const r = await supabase.rpc("schedule_v4_read", {
+            const r = await supabase.rpc("schedule_v75_read", {
               p_project: project.id,
             });
             if (r.error) throw r.error;
             return {
               project,
-              activities: calculate(r.data.tasks, r.data.links),
+              activities: calculate(r.data.tasks, r.data.links, undefined, r.data.closures),
               problem: "",
             };
           } catch (e) {

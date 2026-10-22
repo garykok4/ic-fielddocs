@@ -14,7 +14,9 @@ import {
   newBudget,
   estimateBudget,
 } from "../../../lib/preliminary";
-import { money } from "../../../lib/fee-calculator";
+import FeeBandEditor from "../../../components/FeeBandEditor";
+import RateImport from "../../../components/RateImport";
+import { DEFAULT_BANDS, money } from "../../../lib/fee-calculator";
 import { readableDateTime } from "../../../lib/dates";
 import FeeNumberInput from "../../../components/FeeNumberInput";
 import "./preliminary.css";
@@ -427,6 +429,7 @@ export default function PreliminaryPage() {
           {tab < 4 && (
             <>
               <h2>{GROUPS[tab].name}</h2>
+              {tab === 3 && <FeeBandEditor value={draft.feeBands||DEFAULT_BANDS} onChange={feeBands=>edit({...draft,feeBands})}/>}
               {tab === 0 && (
                 <label className="pre-check">
                   <input
@@ -526,8 +529,7 @@ export default function PreliminaryPage() {
                 <>
                   <p>
                     Consultant percentages, contingency and the planning range
-                    are editable starting assumptions. PJM uses 8% / 6% / 4% /
-                    2% marginal bands on direct construction plus contingency.
+                    are editable starting assumptions. Your PJM bands apply to direct construction plus contingency.
                     Consultant fees are outside the PJM base.
                   </p>
                   <label className="pre-check">
@@ -613,6 +615,7 @@ export default function PreliminaryPage() {
                   Copy rates only
                 </button>
               </div>
+              <RateImport draft={draft} apply={edit}/>
               <p className="pre-note">
                 Selected assemblies: {draft.inputs.structure};{" "}
                 {draft.inputs.cladding}; {draft.inputs.roofStructure};{" "}

@@ -17,6 +17,7 @@ export type LookaheadOptions = {
   selected: string[] | null;
 };
 export type LookaheadReport = {
+  closures?:string[];
   project: string;
   revision: number;
   issued: string;
@@ -35,7 +36,7 @@ export function validateLookahead(o: LookaheadOptions) {
 }
 export function lookaheadRows(s: Snapshot, o: LookaheadOptions) {
   validateLookahead(o);
-  return calculate(s.tasks, s.links)
+  return calculate(s.tasks, s.links, undefined, s.closures)
     .filter(
       (t) =>
         t.item_type === "task" &&
@@ -67,6 +68,7 @@ export function buildLookahead(
   return {
     project,
     revision: s.revision,
+    closures: s.closures || [],
     issued: new Date().toISOString(),
     options: { ...o },
     tasks,

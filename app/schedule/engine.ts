@@ -1,4 +1,4 @@
-import { ontarioToday,isWorkDay,nextWorkDay,addWorkDays,workingDaysBetween } from "../../lib/work-calendar";
+import { projectCalendar,ontarioToday,isWorkDay,nextWorkDay,addWorkDays,workingDaysBetween } from "../../lib/work-calendar";
 export type Status = "not_started" | "in_progress" | "complete" | "on_hold";
 export type Task = {
   id: string;
@@ -21,6 +21,7 @@ export type Task = {
   customer_visible?: boolean;
 };
 export type Link = {
+  relation?: "FS" | "SS";
   id: string;
   project_id: string;
   predecessor_id: string;
@@ -33,6 +34,8 @@ export type Baseline = {
   dates: Record<string, { start: string; finish: string; name: string }>;
 } | null;
 export type Snapshot = {
+  import_history?: {created_at:string;metadata:{source:string;target:string;assumptions:string}}[];
+  closures?: string[];
   revision: number;
   tasks: Task[];
   links: Link[];
@@ -116,10 +119,11 @@ export function validate(tasks: Task[], links: Link[]) {
       throw Error("Dependencies must connect activities in this project.");
     if (
       !Number.isInteger(l.lag_work_days) ||
-      l.lag_work_days < 0 ||
+      l.lag_work_days < -10000 ||
       l.lag_work_days > 10000
     )
-      throw Error("Lag must be 0–10,000 whole work days.");
+      throw Error("Lag must be −10,000 to 10,000 whole work days.");
+    if (l.relation && !["FS","SS"].includes(l.relation)) throw Error("Choose FS or SS dependency.");
     const k = l.predecessor_id + ":" + l.successor_id;
     if (pairs.has(k)) throw Error("A predecessor appears more than once.");
     pairs.add(k);
@@ -133,7 +137,9 @@ export function calculate(
   tasks: Task[],
   links: Link[],
   asOf = today(),
+  closures: string[] = [],
 ): Activity[] {
+  const cal=projectCalendar(closures),normalize=cal.normalize,addWork=cal.add,finish=cal.finish,workDistance=cal.distance;
   validate(tasks, links);
   const map = new Map(
       tasks.filter((t) => t.item_type === "task").map((t) => [t.id, t]),
@@ -146,7 +152,8 @@ export function calculate(
     let start = normalize(t.start_date);
     const incoming = links.filter((l) => l.successor_id === id);
     for (const l of incoming) {
-      const c = addWork(forward(l.predecessor_id).finish, 1 + l.lag_work_days);
+      const pred=forward(l.predecessor_id);
+      const c = addWork(l.relation === "SS" ? pred.start : pred.finish, (l.relation === "SS" ? 0 : 1) + l.lag_work_days);
       if (c > start) start = c;
     }
     const end = finish(start, t.duration_work_days);
@@ -159,7 +166,7 @@ export function calculate(
       controlling: incoming
         .filter(
           (l) =>
-            addWork(out.get(l.predecessor_id)!.finish, 1 + l.lag_work_days) ===
+            addWork(l.relation === "SS" ? out.get(l.predecessor_id)!.start : out.get(l.predecessor_id)!.finish, (l.relation === "SS" ? 0 : 1) + l.lag_work_days) ===
             start,
         )
         .map((l) => l.predecessor_id),
@@ -184,7 +191,7 @@ export function calculate(
         late.get(s.id)!,
         -Math.max(0, s.duration_work_days - 1),
       );
-      const candidate = addWork(ls, -1 - l.lag_work_days);
+      const candidate = l.relation === "SS" ? addWork(ls, Math.max(0,t.duration_work_days-1)-l.lag_work_days) : addWork(ls, -1 - l.lag_work_days);
       if (candidate < lf) lf = candidate;
     }
     late.set(id, lf);

@@ -1,192 +1,27 @@
-﻿import { NextResponse } from "next/server";
-import Parser from "rss-parser";
-import { supabase } from "@/lib/supabase";
-
-const parser = new Parser();
-
-const feeds = [
-  "https://news.google.com/rss/search?q=food+processing+expansion+Ontario",
-  "https://news.google.com/rss/search?q=food+manufacturing+facility+Ontario",
-  "https://news.google.com/rss/search?q=cold+storage+expansion+Ontario",
-  "https://news.google.com/rss/search?q=new+food+plant+Ontario",
-  "https://news.google.com/rss/search?q=manufacturing+expansion+Southwestern+Ontario",
-];
-
-function scoreOpportunity(title: string, content: string) {
-  const text = (title + " " + content).toLowerCase();
-  let score = 0;
-
-  if (text.includes("market report")) score -= 50;
-  if (text.includes("market size")) score -= 50;
-  if (text.includes("forecast")) score -= 40;
-  if (text.includes("analysis")) score -= 25;
-
-  if (text.includes("food processing")) score += 40;
-  if (text.includes("food manufacturing")) score += 40;
-  if (text.includes("processing facility")) score += 40;
-  if (text.includes("food packaging")) score += 35;
-  if (text.includes("cold storage")) score += 35;
-  if (text.includes("new plant")) score += 40;
-  if (text.includes("new facility")) score += 35;
-  if (text.includes("expansion")) score += 25;
-  if (text.includes("investment")) score += 20;
-
-  if (text.includes("woodstock")) score += 35;
-  if (text.includes("oxford")) score += 30;
-  if (text.includes("brantford")) score += 25;
-  if (text.includes("london")) score += 25;
-  if (text.includes("cambridge")) score += 20;
-  if (text.includes("kitchener")) score += 20;
-
-  if (text.includes("sunrise farms")) score += 40;
-  if (text.includes("sofina")) score += 40;
-  if (text.includes("conestoga")) score += 40;
-  if (text.includes("lactalis")) score += 40;
-  if (text.includes("maple leaf")) score += 40;
-
-  return Math.max(0, Math.min(score, 100));
+import {NextResponse} from 'next/server';
+import Parser from 'rss-parser';
+import {createHash} from 'node:crypto';
+import {adminDb,staffFromRequest} from '../../../lib/server/notifications';
+import {SCAN_SOURCES,candidate,canonicalUrl,normalizedTitle} from '../../../lib/opportunities';
+export const runtime='nodejs';export const maxDuration=60;
+const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+export async function POST(request:Request){
+ let db:ReturnType<typeof adminDb>|null=null,runId:string|null=null;
+ try{
+  const staff=await staffFromRequest(request);if(!staff)return NextResponse.json({error:'Sign in as active staff.'},{status:401});db=adminDb();
+  if(staff.role!=='admin'){const access=await db.from('fielddocs_estimating_access').select('staff_id').eq('staff_id',staff.id).maybeSingle();if(access.error)throw access.error;if(!access.data)return NextResponse.json({error:'Estimating access required.'},{status:403});}
+  const lease=await db.rpc('fd_opportunity_scan_start',{p_actor:staff.id});if(lease.error)return NextResponse.json({error:lease.error.message},{status:409});runId=lease.data;
+  const parser=new Parser();const results:{name:string;count:number;error?:string}[]=[],items:any[]=[];
+  // Bounded parallel requests. All source URLs are fixed server-side news searches.
+  for(let i=0;i<SCAN_SOURCES.length;i+=5){await Promise.all(SCAN_SOURCES.slice(i,i+5).map(async([name,query])=>{try{const url='https://news.google.com/rss/search?'+new URLSearchParams({q:query+' when:180d',hl:'en-CA',gl:'CA',ceid:'CA:en'});const r=await fetch(url,{signal:AbortSignal.timeout(7000),cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const xml=await r.text();if(xml.length>2000000)throw Error('Feed too large');const feed=await parser.parseString(xml);let count=0;for(const x of feed.items.slice(0,30)){const date=x.isoDate||x.pubDate||'';const parsed=Date.parse(date);if(!Number.isFinite(parsed)||parsed<Date.now()-180*86400000||parsed>Date.now()+86400000)continue;const c=candidate(x.title||'',x.contentSnippet||x.content||'',x.link||'',name,new Date(parsed).toISOString());if(c&&c.source_url){items.push(c);count++;}}results.push({name,count});}catch(e){results.push({name,count:0,error:(e as Error).message});}}));}
+  // Retain legacy records and their notes/status in the new grouped tracker. Never delete the old tables.
+  const legacy:any[]=[];
+  for(let offset=0;offset<10000;offset+=500){const r=await db.from('opportunities').select('*').order('id').range(offset,offset+499);if(r.error){if(r.error.code!=='42P01'&&r.error.code!=='PGRST205')throw r.error;break;}legacy.push(...r.data||[]);if((r.data||[]).length<500)break;}
+  const candidates=[...legacy.map(o=>({...o,source:o.source||'Previous tracker',legacy_id:String(o.id),source_url:canonicalUrl(o.source_url||''),published:null})),...items].filter(o=>o.title).map(o=>({...o,keys:[...(o.source_url?['url:'+hash(o.source_url)]:[]),'title:'+hash(normalizedTitle(o.title)),...(o.legacy_id?['legacy:'+o.legacy_id]:[])]}));
+  const saved=await db.rpc('fd_opportunity_ingest',{p_items:candidates});if(saved.error)throw saved.error;
+  const summary={...saved.data,sources:results,articles:items.length,legacy:legacy.length,coverage:'Public news search across 14 topic/source groups; not a direct crawl of tender portals or municipal planning files.'};
+  const finished=await db.from('fd_opportunity_scans').update({finished_at:new Date().toISOString(),summary}).eq('id',runId);if(finished.error)throw finished.error;
+  return NextResponse.json(summary);
+ }catch(e){if(db&&runId)await db.from('fd_opportunity_scans').update({finished_at:new Date().toISOString(),summary:{error:(e as Error).message}}).eq('id',runId);return NextResponse.json({error:(e as Error).message},{status:500});}
 }
-
-function detectMunicipality(text: string) {
-  const lower = text.toLowerCase();
-
-  const places = [
-    "Woodstock",
-    "Oxford County",
-    "Ingersoll",
-    "Tillsonburg",
-    "Norwich",
-    "London",
-    "Brantford",
-    "Cambridge",
-    "Kitchener",
-    "Waterloo",
-    "Stratford",
-    "Guelph",
-  ];
-
-  return places.find((place) => lower.includes(place.toLowerCase())) || null;
-}
-
-function detectCompany(text: string) {
-  const lower = text.toLowerCase();
-
-  const companies = [
-    "Sunrise Farms",
-    "Conestoga Cold Storage",
-    "Conestoga",
-    "Sofina",
-    "Lactalis",
-    "Maple Leaf",
-    "Andriani",
-    "Massilly",
-    "Lee Li Holdings",
-    "Propower",
-  ];
-
-  return companies.find((company) => lower.includes(company.toLowerCase())) || null;
-}
-
-function createProjectKey(
-  title: string,
-  company: string | null,
-  municipality: string | null
-) {
-  const text = (title + " " + (company || "") + " " + (municipality || "")).toLowerCase();
-
-  if (text.includes("sunrise farms") && text.includes("woodstock")) {
-    return "sunrise-farms-woodstock-poultry-processing";
-  }
-
-  if (text.includes("poultry processing") && text.includes("woodstock")) {
-    return "sunrise-farms-woodstock-poultry-processing";
-  }
-
-  if (text.includes("conestoga") && text.includes("cold storage")) {
-    return "conestoga-cold-storage-expansion";
-  }
-
-  if ((text.includes("massilly") || text.includes("brantford")) && text.includes("packaging")) {
-    return "massilly-brantford-packaging-plant";
-  }
-
-  if (text.includes("andriani") && text.includes("london")) {
-    return "andriani-london-production-plant";
-  }
-
-  if (company && municipality) {
-    return (company + "-" + municipality)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-  }
-
-  return title
-    .toLowerCase()
-    .replace(/ - .*$/, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
-}
-
-export async function GET() {
-  const found = [];
-
-  for (const feedUrl of feeds) {
-    const feed = await parser.parseURL(feedUrl);
-
-    for (const item of feed.items.slice(0, 15)) {
-      const title = item.title || "Untitled Opportunity";
-      const link = item.link || "";
-      const description = item.contentSnippet || item.content || "";
-      const combinedText = title + " " + description;
-
-      const score = scoreOpportunity(title, description);
-
-      if (score < 30) continue;
-
-      const municipality = detectMunicipality(combinedText);
-      const company = detectCompany(combinedText);
-      const projectKey = createProjectKey(title, company, municipality);
-
-      const { error } = await supabase.from("opportunities").upsert(
-        {
-          project_key: projectKey,
-          title,
-          description,
-          source: "News RSS",
-          source_url: link,
-          project_type: "Food Processing / Manufacturing",
-          municipality,
-          company,
-          status: "Lead",
-          confidence: 70,
-          opportunity_score: score,
-          notes: "Auto-imported from RSS/news scanner.",
-        },
-        { onConflict: "project_key" }
-      );
-
-    if (!error) {
-  await supabase.from("opportunity_sources").upsert(
-    {
-      project_key: projectKey,
-      source_url: link,
-      article_title: title,
-      source_name: "Google News RSS",
-    },
-    { onConflict: "source_url" }
-  );
-
-  found.push({ title, company, municipality, score, projectKey });
-} else {
-  console.error("Insert error:", error.message);
-}
-    }
-  }
-
-  return NextResponse.json({
-    message: "Opportunity scanner complete",
-    found,
-  });
-}
+export async function GET(){return NextResponse.json({error:'Use the authenticated Scan for opportunities button.'},{status:405});}

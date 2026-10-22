@@ -317,9 +317,9 @@ export async function buildBudgetWorkbook(
     [
       11,
       "PJM fee",
-      "MIN(B8,500000)*0.08+MAX(0,MIN(B8,1000000)-500000)*0.06+MAX(0,MIN(B8,10000000)-1000000)*0.04+MAX(0,B8-10000000)*0.02",
+      result.fee.bands.map(b=>`MAX(0,${Number.isFinite(b.upper)?`MIN(B8,${b.upper})`:"B8"}-${b.lower})*${b.rate}`).join("+"),
       result.fee.pjm,
-      "Marginal rates: 8% / 6% / 4% / 2%",
+      result.fee.bands.map(b=>`${b.name}: ${b.rate*100}%`).join("; "),
     ],
     [
       12,

@@ -60,7 +60,7 @@ export default function LookaheadExport({
     let live = true;
     setBusy(true);
     supabase
-      .rpc("schedule_v4_read", { p_project: project })
+      .rpc("schedule_v75_read", { p_project: project })
       .then(({ data, error }: any) => {
         if (!live) return;
         if (error) setError(error.message);
@@ -98,7 +98,7 @@ export default function LookaheadExport({
     setBusy(true);
     setError("");
     try {
-      const latest = await supabase.rpc("schedule_v4_read", {
+      const latest = await supabase.rpc("schedule_v75_read", {
         p_project: project,
       });
       if (latest.error) throw latest.error;

@@ -30,3 +30,13 @@ export function dueCountdown(due:string|null|undefined,status?:string,asOf=ontar
  const count=workingDaysBetween(asOf,due);return count?`Due in ${count} work ${count===1?'day':'days'}`:'No work days left before due date';
 }
 export const COUNTDOWN_HELP='Working days after today through the due date; Saturdays, Sundays and Ontario holiday closures are excluded. Today’s remaining hours are not counted.';
+
+/** Per-project closures extend the standard Ontario planning calendar. */
+export function projectCalendar(closures:string[]=[]){
+ if(closures.length>500||closures.some(d=>!validDate(d)))throw Error('Provide up to 500 valid shutdown dates.');
+ const closed=new Set(closures),work=(s:string)=>isWorkDay(s)&&!closed.has(s);
+ const normalize=(s:string)=>{if(!validDate(s))throw Error('Invalid date.');while(!work(s))s=shiftDate(s,1);return s;};
+ const add=(s:string,n:number)=>{if(!validDate(s)||!Number.isInteger(n)||Math.abs(n)>20000)throw Error('Invalid work-day offset.');const dir=n<0?-1:1;for(let i=0;i<Math.abs(n);){s=shiftDate(s,dir);if(!validDate(s))throw Error('Date out of range.');if(work(s))i++;}return s;};
+ const distance=(a:string,b:string):number=>{if(!validDate(a)||!validDate(b))throw Error('Invalid date.');if(a>b)return -distance(b,a);let n=0;while(a<b){a=shiftDate(a,1);if(work(a))n++;}return n;};
+ return {work,normalize,add,distance,finish:(s:string,n:number)=>add(s,Math.max(0,n-1))};
+}

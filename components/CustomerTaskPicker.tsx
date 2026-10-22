@@ -19,10 +19,10 @@ export default function CustomerTaskPicker({ project, close, saved }: {
   async function load() {
     setBusy(true); setError("");
     try {
-      const r = await supabase.rpc("schedule_v4_read", { p_project: project });
+      const r = await supabase.rpc("schedule_v75_read", { p_project: project });
       if (r.error) throw r.error;
       const next = r.data as Snapshot;
-      setRows(calculate(next.tasks, next.links).filter(t => t.item_type === "task").sort((a,b) => a.start.localeCompare(b.start) || a.sort_order - b.sort_order));
+      setRows(calculate(next.tasks, next.links, undefined, next.closures).filter(t => t.item_type === "task").sort((a,b) => a.start.localeCompare(b.start) || a.sort_order - b.sort_order));
       setSnapshot(next);
       setSelected(new Set(next.tasks.filter(t => t.item_type === "task" && t.customer_visible).map(t => t.id)));
     } catch(e) { setError((e as Error).message); }
@@ -33,10 +33,10 @@ export default function CustomerTaskPicker({ project, close, saved }: {
     if (!snapshot || saving.current) return;
     saving.current = true; setBusy(true); setError("");
     try {
-      const r = await supabase.rpc("schedule_v5_save", {
+      const r = await supabase.rpc("schedule_v75_save", {
         p_project: project, p_revision: snapshot.revision,
         p_tasks: snapshot.tasks.map(t => t.item_type === "task" ? { ...t, customer_visible: selected.has(t.id) } : t),
-        p_links: snapshot.links, p_baseline: snapshot.baseline,
+        p_closures: snapshot.closures || [], p_links: snapshot.links, p_baseline: snapshot.baseline,
       });
       if (r.error) throw r.error;
       saved(r.data as Snapshot); close();
