@@ -9,6 +9,10 @@ const clean = (s: string) =>
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7e\n\r\t\u00a0-\u00ff]/g, "?");
 export async function createLookaheadPdf(report: LookaheadReport, providedFonts?: {regular:string;bold:string}) {
+  if (report.options.format === "gantt") {
+    const { createScheduleGanttPdf } = await import("./schedule-gantt-pdf");
+    return createScheduleGanttPdf(report, providedFonts);
+  }
   const isWorkDay=projectCalendar(report.closures).work;
   const holidayOn=(date:string)=>ontarioHolidayOn(date)||(report.closures?.includes(date)?{date,name:"Project shutdown",observed:false,actualDate:date}:undefined);
   validateLookahead(report.options);
@@ -51,7 +55,7 @@ export async function createLookaheadPdf(report: LookaheadReport, providedFonts?
     first = false;
     doc.setFillColor(24, 60, 64);
     doc.rect(0, 0, W, 3, "F");
-    text("I/C CONSTRUCTION  /  PROJECT LOOK-AHEAD", M, 12, 9);
+    text("I/C CONSTRUCTION  /  " + (o.fullProject ? "PROJECT SCHEDULE" : "PROJECT LOOK-AHEAD"), M, 12, 9);
     doc.setFont("FieldDocs", "bold");
     const projectLines = wrap(report.project, 250, 16);
     text(projectLines.slice(0, 2).join("\n"), M, 22, 16);
@@ -101,188 +105,7 @@ export async function createLookaheadPdf(report: LookaheadReport, providedFonts?
     footer();
     return doc;
   }
-  if (o.format === "gantt") {
-    for (let start = o.start; start <= o.end; start = shiftDate(start, 14)) {
-      const end = shiftDate(start, 13) < o.end ? shiftDate(start, 13) : o.end,
-        days = daysBetween(start, end) + 1,
-        left = 100,
-        cw = (W - M - left) / days;
-      const rows = report.tasks.filter(
-        (t) => t.start <= end && t.finish >= start,
-      );
-      let index = 0;
-      do {
-        let y = page("Gantt look-ahead", scope);
-        text(
-          `Panel: ${readableDate(start, "always")} - ${readableDate(end, "always")}`,
-          M,
-          y,
-          9,
-        );
-        y += 5;
-        const top = y;
-        doc.setFillColor(238, 242, 247);
-        doc.rect(M, y, W - M * 2, 12, "F");
-        text("ACTIVITY / RESPONSIBILITY", M + 2, y + 8, 8);
-        for (let d = 0; d < days; d++) {
-          const date = shiftDate(start, d);
-          if (!isWorkDay(date)) {
-            doc.setFillColor(
-              holidayOn(date) ? 255 : 225,
-              holidayOn(date) ? 238 : 230,
-              holidayOn(date) ? 208 : 236,
-            );
-            doc.rect(left + d * cw, y, cw, 12, "F");
-          }
-          text(
-            isoDay(date).toLocaleDateString("en-US", {
-              timeZone: "UTC",
-              weekday: "short",
-            }),
-            left + d * cw + 1,
-            y + 4,
-            6,
-          );
-          text(
-            `${Number(date.slice(8))}${holidayOn(date) ? "*" : ""}`,
-            left + d * cw + 1,
-            y + 9,
-            8,
-          );
-        }
-        y += 12;
-        const positions = new Map<
-          string,
-          { x: number; finish: number; y: number }
-        >();
-        if (!rows.length) {
-          text("No activities overlap this panel.", M, y + 10);
-          y += 20;
-        }
-        while (index < rows.length) {
-          const t = rows[index];
-          const heading = wrap(`#${numbers.get(t.id)} ${t.name}`, 82, 9);
-          const info = wrap(
-            [
-              o.responsible
-                ? [t.trade, t.responsible_party].filter(Boolean).join(" / ")
-                : "",
-              o.progress ? `${t.progress}% complete` : "",
-              `${readableDate(t.start, "never")} - ${readableDate(t.finish, "never")}`,
-            ]
-              .filter(Boolean)
-              .join(" | "),
-            82,
-            7,
-          );
-          const rowH = Math.max(14, heading.length * 3.7 + info.length * 3 + 4);
-          if (y + rowH > 177 && positions.size) break;
-          const actualH = Math.min(rowH, 177 - y);
-          const maxHeading = Math.max(1, Math.floor((actualH - 18) / 3.7));
-          const visibleHeading = heading.slice(0, maxHeading),
-            visibleInfo = info.slice(0, 3);
-          if (heading.length > maxHeading)
-            visibleHeading[visibleHeading.length - 1] += "...";
-          text(visibleHeading.join("\n"), M + 2, y + 4, 9);
-          text(
-            visibleInfo.join("\n"),
-            M + 2,
-            y + 5 + visibleHeading.length * 3.7,
-            7,
-          );
-          for (let d = 0; d < days; d++) {
-            const date = shiftDate(start, d);
-            if (!isWorkDay(date)) {
-              doc.setFillColor(
-                holidayOn(date) ? 255 : 245,
-                holidayOn(date) ? 245 : 247,
-                holidayOn(date) ? 226 : 250,
-              );
-              doc.rect(left + d * cw, y, cw, actualH, "F");
-            }
-            doc.setDrawColor(229, 234, 240);
-            doc.line(left + d * cw, y, left + d * cw, y + actualH);
-          }
-          const a = t.start < start ? start : t.start,
-            b = t.finish > end ? end : t.finish,
-            x = left + daysBetween(start, a) * cw + 1,
-            width = Math.max(2, (daysBetween(a, b) + 1) * cw - 2),
-            mid = y + actualH / 2;
-          doc.setFillColor(...colour(t));
-          if (t.is_milestone) {
-            doc.triangle(
-              x + cw / 2,
-              mid - 3,
-              x + cw / 2 - 3,
-              mid,
-              x + cw / 2 + 3,
-              mid,
-              "F",
-            );
-            doc.triangle(
-              x + cw / 2,
-              mid + 3,
-              x + cw / 2 - 3,
-              mid,
-              x + cw / 2 + 3,
-              mid,
-              "F",
-            );
-          } else {
-            doc.roundedRect(x, mid - 2.5, width, 5, 1, 1, "F");
-            if (o.progress && t.progress > 0) {
-              doc.setFillColor(20, 50, 90);
-              doc.rect(x, mid - 2.5, (width * t.progress) / 100, 1, "F");
-            }
-          }
-          if (t.start < start) text("<", x, mid + 1, 8);
-          if (t.finish > end) text(">", x + width - 2, mid + 1, 8);
-          positions.set(t.id, { x, finish: x + width, y: mid });
-          doc.setDrawColor(217, 225, 235);
-          doc.line(M, y + actualH, W - M, y + actualH);
-          y += actualH;
-          index++;
-        }
-        if (o.dependencies) {
-          doc.setDrawColor(90, 104, 120);
-          doc.setLineWidth(0.25);
-          for (const l of report.links) {
-            const a = positions.get(l.predecessor_id),
-              b = positions.get(l.successor_id);
-            if (a && b) {
-              const bend = Math.min(W - M - 1, a.finish + 2);
-              doc.line(a.finish, a.y, bend, a.y);
-              doc.line(bend, a.y, bend, b.y);
-              doc.line(bend, b.y, b.x, b.y);
-              doc.line(b.x, b.y, b.x - 1.2, b.y - 1);
-              doc.line(b.x, b.y, b.x - 1.2, b.y + 1);
-            }
-          }
-        }
-        text(legend, M, 184, 7);
-        const holidays = Array.from({ length: days }, (_, d) =>
-          shiftDate(start, d),
-        )
-          .map((d) => holidayOn(d))
-          .filter(Boolean);
-        text(
-          wrap(
-            holidays
-              .map((h) => `* ${readableDate(h!.date, "never")}: ${h!.name}`)
-              .join(" | ") ||
-              "Shaded columns: weekends. Holiday shading uses the project Ontario planning calendar.",
-            250,
-            7,
-          )
-            .slice(0, 2)
-            .join("\n"),
-          M,
-          190,
-          7,
-        );
-      } while (index < rows.length);
-    }
-  } else {
+  {
     // One week per page; spill crowded weeks onto continuation pages without dropping entries.
     const offset = (isoDay(o.start).getUTCDay() + 6) % 7;
     for (
@@ -401,6 +224,7 @@ export async function createLookaheadPdf(report: LookaheadReport, providedFonts?
     }
   }
   // Full activity names, dates and selected dependency references provide traceability across page panels.
+  if (o.register || o.dependencies) {
   let y = page("Activity register", scope);
   for (const t of report.tasks) {
     const deps = o.dependencies
@@ -419,6 +243,7 @@ export async function createLookaheadPdf(report: LookaheadReport, providedFonts?
       y += 4.2;
     }
     y += 5;
+  }
   }
   footer();
   return doc;

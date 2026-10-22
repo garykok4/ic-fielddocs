@@ -7,6 +7,7 @@ import {
   lookaheadRows,
   LookaheadOptions,
   weeksFrom,
+  resolveLookaheadOptions,
 } from "../lib/lookahead";
 import { ontarioToday } from "../lib/work-calendar";
 import { readableDate } from "../lib/dates";
@@ -29,6 +30,12 @@ export default function LookaheadExport({
     [weeks, setWeeks] = useState("4"),
     [pdf, setPdf] = useState("");
   const [options, setOptions] = useState<LookaheadOptions>({
+    paper: "tabloid",
+    layout: "pages",
+    details: false,
+    register: false,
+    colourBy: "trade",
+    fullProject: false,
     start: ontarioToday(),
     end: weeksFrom(ontarioToday(), 4),
     format: defaultFormat,
@@ -81,6 +88,7 @@ export default function LookaheadExport({
       return { items: [], error: (e as Error).message };
     }
   }, [snapshot, options]);
+  const resolved = snapshot ? resolveLookaheadOptions(snapshot, options) : options;
   const selected = rows.items.filter(
     (t) => options.selected === null || options.selected.includes(t.id),
   );
@@ -138,7 +146,7 @@ export default function LookaheadExport({
       <header>
         <div>
           <div className="la-eyebrow">CLIENT SCHEDULE EXPORT</div>
-          <h2>Export look-ahead</h2>
+          <h2>Export schedule</h2>
           <p>{projectName}</p>
         </div>
         <button
@@ -170,15 +178,21 @@ export default function LookaheadExport({
             <label>
               Period
               <select
+                aria-label="Period"
                 value={weeks}
                 onChange={(e) => {
                   setWeeks(e.target.value);
+                  if (e.target.value === "project") {
+                    update({fullProject:true, selected:null});
+                    return;
+                  }
                   if (e.target.value !== "custom")
                     update({
+                      fullProject:false,
                       end: weeksFrom(options.start, Number(e.target.value)),
                       selected: null,
                     });
-                  else update({});
+                  else update({fullProject:false});
                 }}
               >
                 {[1, 2, 4, 6].map((w) => (
@@ -186,14 +200,17 @@ export default function LookaheadExport({
                     {w} week{w > 1 ? "s" : ""}
                   </option>
                 ))}
-                <option value="custom">Custom (up to 12 weeks)</option>
+                <option value="custom">Custom date range</option>
+                <option value="project">Entire project</option>
               </select>
             </label>
             <label>
               Start date
               <input
                 type="date"
-                value={options.start}
+                aria-label="Start date"
+                disabled={weeks === "project"}
+                value={resolved.start}
                 onChange={(e) =>
                   update({
                     start: e.target.value,
@@ -209,8 +226,9 @@ export default function LookaheadExport({
               End date
               <input
                 type="date"
+                aria-label="End date"
                 disabled={weeks !== "custom"}
-                value={options.end}
+                value={resolved.end}
                 onChange={(e) =>
                   update({ end: e.target.value, selected: null })
                 }
@@ -227,6 +245,24 @@ export default function LookaheadExport({
               >
                 <option value="gantt">Gantt chart</option>
                 <option value="calendar">Weekly calendar</option>
+              </select>
+            </label>
+            <label>
+              Paper size (Gantt)
+              <select aria-label="Paper size (Gantt)" disabled={options.format !== "gantt" || options.layout === "sheet"} value={options.paper} onChange={e=>update({paper:e.target.value as "letter"|"tabloid"})}>
+                <option value="tabloid">11 × 17 landscape</option><option value="letter">Letter landscape</option>
+              </select>
+            </label>
+            <label>
+              Gantt layout
+              <select aria-label="Gantt layout" disabled={options.format !== "gantt"} value={options.layout} onChange={e=>update({layout:e.target.value as "pages"|"sheet"})}>
+                <option value="pages">Readable pages</option><option value="sheet">Single large sheet (custom size)</option>
+              </select>
+            </label>
+            <label>
+              Gantt colours
+              <select aria-label="Gantt colours" disabled={options.format !== "gantt"} value={options.colourBy} onChange={e=>update({colourBy:e.target.value as "trade"|"phase"})}>
+                <option value="trade">By trade</option><option value="phase">By phase</option>
               </select>
             </label>
             <label>
@@ -283,6 +319,8 @@ export default function LookaheadExport({
             {(
               [
                 ["customerOnly", "Only customer-visible activities"],
+                ["details", "Gantt task-details column"],
+                ["register", "Include full activity register"],
                 ["milestones", "Include milestones"],
                 ["responsible", "Show trades / responsible parties"],
                 ["progress", "Show completion progress"],
@@ -294,7 +332,7 @@ export default function LookaheadExport({
               <label key={key}>
                 <input
                   type="checkbox"
-                  checked={options[key]}
+                  checked={!!options[key]}
                   onChange={(e) =>
                     update({ [key]: e.target.checked, selected: null })
                   }
@@ -305,9 +343,11 @@ export default function LookaheadExport({
           </div>
           <p className="la-info">
             Uses the latest saved project schedule. Internal notes and personal
-            to-dos are never exported. Gantt pages show up to two weeks each;
-            calendar pages show one week and continue when crowded. Critical
-            path is calculated across the full project.
+            to-dos are never exported. Entire project uses the first and last calculated
+            activity dates; your visibility filters still apply. Gantt pages keep up to
+            two years on one timeline with repeated headings. Calendar exports use
+            one week per Letter page. Dependency exports include an activity register
+            for links crossing pages. Critical path is calculated across the full project.
           </p>
           <div className="la-selection-heading">
             <h3>{selected.length} activities selected</h3>
@@ -365,7 +405,7 @@ export default function LookaheadExport({
           {pdf && (
             <a
               href={pdf}
-              download={`${projectName.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60)}_${options.start}_${options.format}_lookahead.pdf`}
+              download={`${projectName.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60)}_${options.start}_${options.format}_${options.fullProject ? "project" : "lookahead"}.pdf`}
             >
               Download PDF
             </a>

@@ -510,7 +510,7 @@ export default function ScheduleWorkspace({
                 <option value="construction">Construction</option>
               </select>
             </label>
-            <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export look-ahead</button>
+            <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export schedule</button>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setReviewOpen(true)}>Export week in review</button>
             <a href={`/projects/${project}`}>Project home & tasks</a>
             <a href={`/projects/${project}?tab=customer`}>Customer summary</a>
