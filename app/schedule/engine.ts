@@ -266,3 +266,7 @@ export function lanes(rows: Activity[], start: string, end: string) {
   }
   return placed;
 }
+
+// Calculated dates include dependencies, signed lag, holidays and shutdowns.
+export const chronological = (a: Activity, b: Activity) =>
+  a.start.localeCompare(b.start) || a.sort_order - b.sort_order || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);

@@ -1,4 +1,4 @@
-import { Activity, Link, Snapshot, calculate } from "../app/schedule/engine";
+import { Activity, Link, Snapshot, calculate, chronological } from "../app/schedule/engine";
 import { validDate, shiftDate, isoDay } from "./work-calendar";
 export type LookaheadOptions = {
   fullProject?: boolean;
@@ -59,9 +59,8 @@ export function lookaheadRows(s: Snapshot, o: LookaheadOptions) {
     )
     .sort(
       (a, b) =>
-        a.sort_order - b.sort_order ||
-        a.start.localeCompare(b.start) ||
-        a.name.localeCompare(b.name),
+        (s.tasks.find(p => p.id === a.parent_id)?.sort_order ?? Number.MAX_SAFE_INTEGER) - (s.tasks.find(p => p.id === b.parent_id)?.sort_order ?? Number.MAX_SAFE_INTEGER) ||
+        (a.parent_id || "").localeCompare(b.parent_id || "") || chronological(a,b),
     );
 }
 export function buildLookahead(

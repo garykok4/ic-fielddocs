@@ -14,6 +14,7 @@ import {
   newBudget,
   estimateBudget,
 } from "../../../lib/preliminary";
+import BudgetAIBuilder from "../../../components/BudgetAIBuilder";
 import FeeBandEditor from "../../../components/FeeBandEditor";
 import RateImport from "../../../components/RateImport";
 import { DEFAULT_BANDS, money } from "../../../lib/fee-calculator";
@@ -81,6 +82,7 @@ const GROUPS = [
   },
 ];
 export default function PreliminaryPage() {
+  const [aiOpen, setAiOpen] = useState(false);
   const [draft, setDraft] = useState<BudgetDraft>(newBudget),
     [name, setName] = useState("New preliminary budget"),
     [project, setProject] = useState(""),
@@ -258,6 +260,15 @@ export default function PreliminaryPage() {
       setBusy(false);
     }
   }
+  async function pdf() {
+    if (!result) return;
+    setBusy(true); setError("");
+    try {
+      const {buildBudgetPdf}=await import("../../../lib/preliminary-pdf");
+      const doc=await buildBudgetPdf(name,projects.find(p=>p.id===project)?.project_name||"",draft);
+      doc.save(name.replace(/[^a-z0-9_-]/gi,"_").slice(0,80)+"_preliminary.pdf");
+    } catch(e) {setError((e as Error).message);} finally {setBusy(false);}
+  }
   function useRates() {
     const source = saved.find((s) => s.id === ratesFrom);
     if (!source) return;
@@ -299,6 +310,7 @@ export default function PreliminaryPage() {
     );
   return (
     <main className="pre-page">
+      {aiOpen && <BudgetAIBuilder seed={draft} saved={saved} project={project} close={()=>setAiOpen(false)} apply={r=>{setDraft(r.draft);setName(r.name);setCurrent(null);setDirty(true);setNotice("AI draft opened. Review and edit the worksheet, then Save budget. Nothing was saved automatically.");setError("");setTab(4);setAiOpen(false);}}/>}
       <header className="pre-heading">
         <div>
           <div className="pre-eyebrow">FIELD DOCS / ESTIMATING</div>
@@ -309,6 +321,8 @@ export default function PreliminaryPage() {
         </div>
         <div className="pre-actions">
           <a href="/estimating">PJM calculator</a>
+          <button disabled={busy || !result} onClick={()=>setAiOpen(true)}>Build with AI</button>
+          <button disabled={busy || !result} onClick={()=>void pdf()}>Export PDF</button>
           <button disabled={busy} onClick={() => open()}>
             New budget
           </button>

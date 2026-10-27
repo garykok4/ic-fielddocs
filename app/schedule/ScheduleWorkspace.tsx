@@ -11,6 +11,7 @@ import { requireActiveStaff } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import {
   Activity,
+  chronological,
   Task,
   Link,
   Snapshot,
@@ -268,7 +269,7 @@ export default function ScheduleWorkspace({
   );
   const rows: Activity[] = [];
   for (const p of phases) {
-    const children = matched.filter((t) => t.parent_id === p.id).sort(ordered);
+    const children = matched.filter((t) => t.parent_id === p.id).sort(chronological);
     if (
       children.length ||
       ((!stageFilter || (p.stage || "construction") === stageFilter) &&
@@ -283,7 +284,7 @@ export default function ScheduleWorkspace({
       if (!collapsed.has(p.id)) rows.push(...children);
     }
   }
-  rows.push(...matched.filter((t) => !t.parent_id).sort(ordered));
+  rows.push(...matched.filter((t) => !t.parent_id).sort(chronological));
   const projectFinish = activities
     .filter((t) => t.item_type === "task")
     .map((t) => t.finish)
@@ -368,6 +369,7 @@ export default function ScheduleWorkspace({
   async function reorder(id: string, delta: number) {
     if (!snap) return;
     const t = snap.tasks.find((t) => t.id === id)!;
+    if (t.item_type !== "phase") return;
     const peers = snap.tasks
       .filter((x) => x.item_type === t.item_type && x.parent_id === t.parent_id)
       .sort(ordered);
@@ -511,6 +513,7 @@ export default function ScheduleWorkspace({
               </select>
             </label>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export schedule</button>
+            <small>Tasks auto-sort by start date within each phase.</small>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setReviewOpen(true)}>Export week in review</button>
             <a href={`/projects/${project}`}>Project home & tasks</a>
             <a href={`/projects/${project}?tab=customer`}>Customer summary</a>
@@ -847,14 +850,16 @@ export default function ScheduleWorkspace({
                         <td>
                           <button
                             aria-label={`Move ${t.name} up`}
-                            disabled={busy || stale}
+                            disabled={busy || stale || t.item_type !== "phase"}
+                            title="Tasks sort automatically by start date; arrows reorder phases"
                             onClick={() => void reorder(t.id, -1)}
                           >
                             ↑
                           </button>
                           <button
                             aria-label={`Move ${t.name} down`}
-                            disabled={busy || stale}
+                            disabled={busy || stale || t.item_type !== "phase"}
+                            title="Tasks sort automatically by start date; arrows reorder phases"
                             onClick={() => void reorder(t.id, 1)}
                           >
                             ↓
@@ -1338,15 +1343,17 @@ function Gantt(p: GanttProps) {
               >
                 <div className="order">
                   <button
-                    disabled={p.busy}
+                    disabled={p.busy || t.item_type !== "phase"}
                     aria-label={`Move ${t.name} up`}
+                    title="Tasks sort automatically by start date; arrows reorder phases"
                     onClick={() => void p.reorder(t.id, -1)}
                   >
                     ↑
                   </button>
                   <button
-                    disabled={p.busy}
+                    disabled={p.busy || t.item_type !== "phase"}
                     aria-label={`Move ${t.name} down`}
+                    title="Tasks sort automatically by start date; arrows reorder phases"
                     onClick={() => void p.reorder(t.id, 1)}
                   >
                     ↓
