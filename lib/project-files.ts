@@ -25,7 +25,7 @@ export const ISSUE_STATUSES = [
   "As Built",
   "For Information",
 ];
-export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+export const MAX_FILE_BYTES = 1024 * 1024 * 1024;
 export const FILE_TYPES: Record<string, string> = {
   pdf: "application/pdf",
   png: "image/png",

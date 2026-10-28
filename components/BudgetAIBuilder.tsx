@@ -1,17 +1,21 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import AIDocuments,{analyzeDocuments} from './AIDocuments';
+import type {AISelection} from '../lib/ai-documents';
 import {supabase} from '../lib/supabase';
 import {BudgetDraft,SavedBudget,estimateBudget,FIELDS,OPTIONS} from '../lib/preliminary';
 import type {BudgetAIResult} from '../lib/budget-ai';
 import {money} from '../lib/fee-calculator';
 import './lookahead-export.css';
 export default function BudgetAIBuilder({seed,saved,project,close,apply}:{seed:BudgetDraft;saved:SavedBudget[];project:string;close:()=>void;apply:(r:BudgetAIResult)=>void}){
- const ref=useRef<HTMLDialogElement>(null);const [scope,setScope]=useState(''),[reference,setReference]=useState(''),[files,setFiles]=useState<File[]>([]),[consent,setConsent]=useState(false),[reviewed,setReviewed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<BudgetAIResult|null>(null);
+ const [progress,setProgress]=useState('');
+ const ref=useRef<HTMLDialogElement>(null);const [scope,setScope]=useState(''),[reference,setReference]=useState(''),[files,setFiles]=useState<AISelection[]>([]),[consent,setConsent]=useState(false),[reviewed,setReviewed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[result,setResult]=useState<BudgetAIResult|null>(null);
  useEffect(()=>{const active=document.activeElement;ref.current?.showModal();return()=>{ref.current?.close();if(active instanceof HTMLElement)active.focus();};},[]);
  async function generate(){setError('');setBusy(true);setResult(null);setReviewed(false);try{
-  if(files.length>9||files.reduce((n,f)=>n+f.size,0)>3*1024*1024)throw Error('Use up to nine files, 3 MB combined.');
+  if(!consent)throw Error('Confirm document sharing.');
+  const receipts=await analyzeDocuments(project,'budget',files,setFiles,setProgress);
   const session=await supabase.auth.getSession();const token=session.data.session?.access_token;if(!token)throw Error('Sign in again.');
-  const body=new FormData();body.set('scope',scope);body.set('reference',reference);body.set('project',project);body.set('seed',JSON.stringify(seed));body.set('consent',String(consent));files.forEach(file=>body.append('documents',file));
+  const body=new FormData();body.set('scope',scope);body.set('reference',reference);body.set('project',project);body.set('seed',JSON.stringify(seed));body.set('consent',String(consent));body.set('analyses',JSON.stringify(receipts));
   const response=await fetch('/api/budget-draft',{method:'POST',headers:{Authorization:'Bearer '+token},body,signal:AbortSignal.timeout(115000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Budget generation failed.');
   estimateBudget(data.draft.draft);setResult(data.draft);
  }catch(e){setError((e as Error).name==='TimeoutError'?'Request timed out. Your current budget was not changed.':(e as Error).message);}finally{setBusy(false);}}
@@ -21,7 +25,9 @@ export default function BudgetAIBuilder({seed,saved,project,close,apply}:{seed:B
   <div className="la-body">{error&&<p role="alert" className="la-error">{error}</p>}
   <fieldset disabled={busy}>
    <label>Project scope and constraints<textarea aria-label="Project scope and constraints" style={{width:'100%',minHeight:140}} maxLength={20000} value={scope} onChange={e=>{setScope(e.target.value);setResult(null);setReviewed(false);}} placeholder="Location, building use, floor area, storeys, basement, structure, cladding, roof, servicing, finishes, exclusions and expected duration…"/></label>
-   <div className="la-grid"><label>Saved rate reference<select aria-label="Saved rate reference" value={reference} onChange={e=>{setReference(e.target.value);setResult(null);setReviewed(false);}}><option value="">No reference — AI allowances / unpriced scope</option>{saved.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label>Drawings, scope or supplier quotes<input aria-label="Budget documents" type="file" multiple accept=".pdf,.txt,.md" onChange={e=>{setFiles(Array.from(e.target.files||[]));setResult(null);setReviewed(false);}}/><small>Up to nine files, 3 MB combined. Use relevant drawing pages.</small></label></div>
+   <div className="la-grid"><label>Saved rate reference<select aria-label="Saved rate reference" value={reference} onChange={e=>{setReference(e.target.value);setResult(null);setReviewed(false);}}><option value="">No reference — AI allowances / unpriced scope</option>{saved.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label></div>
+   <AIDocuments key={project} project={project} kind="budget" value={files} onChange={v=>{setFiles(v);setResult(null);setReviewed(false);}} busy={busy} onBusy={setBusy}/>
+   {progress&&busy&&<p role="status">{progress}</p>}
    <p className="la-info">Uses the open worksheet's building inputs as starting assumptions and retains its PJM bands. Only your scope, starting inputs, selected rate reference and attached files are sent to the AI provider. It does not search your other projects or verify current market prices.</p>
    <label><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I agree to send this information to the configured AI provider.</label>
    <p><button className="la-primary" disabled={busy||!consent||scope.trim().length<20} onClick={()=>void generate()}>{busy?'Building budget…':result?'Generate another draft':'Generate budget draft'}</button></p>

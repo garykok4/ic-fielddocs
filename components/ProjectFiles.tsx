@@ -1,4 +1,5 @@
 "use client";
+import {uploadLargeFile} from "../lib/storage-upload";
 import {readableDate,readableDateTime} from "../lib/dates";
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
@@ -99,6 +100,7 @@ export default function ProjectFiles({
   projectId: string;
   projectName: string;
 }) {
+  const [uploadProgress,setUploadProgress]=useState("");
   const [data, setData] = useState<FileWorkspace | null>(null),
     [tab, setTab] = useState("published"),
     [query, setQuery] = useState(""),
@@ -247,15 +249,8 @@ export default function ProjectFiles({
     res: { id: string; path: string; token: string; mime: string },
     f: File,
   ) {
-    const result = await supabase.storage
-      .from("fielddocs-project-files")
-      .uploadToSignedUrl(
-        res.path,
-        res.token,
-        new File([f], f.name, { type: res.mime }),
-        { contentType: res.mime, cacheControl: "0" },
-      );
-    if (result.error) throw result.error;
+    await uploadLargeFile("fielddocs-project-files",res.path,res.token,f,res.mime,p=>setUploadProgress(`${f.name}: ${p}%`));
+    setUploadProgress("");
     await api("finish", { revision: res.id });
   }
   async function submit(e: FormEvent) {
@@ -271,7 +266,7 @@ export default function ProjectFiles({
         } else {
           if (!file) throw Error("Choose a file to upload.");
           if (file.size > MAX_FILE_BYTES || !file.size)
-            throw Error("Choose a file between 1 byte and 50 MB.");
+            throw Error("Choose a file between 1 byte and 1 GB (your Storage plan may have a lower limit).");
           if (!fileMime(file.name)) throw Error("Unsupported file format.");
           const reserved = await api("upload", {
             ...form,
@@ -427,6 +422,7 @@ export default function ProjectFiles({
       : "";
   return (
     <section className="project-files">
+      {uploadProgress&&<p role="status">Uploading {uploadProgress}</p>}
       <div className="files-row">
         <div>
           <span className="files-eyebrow">DOCUMENT CONTROL</span>
@@ -1047,7 +1043,7 @@ export default function ProjectFiles({
                       </select>
                     </label>
                     <label className="files-full">
-                      File (maximum 50 MB)
+                      File (up to 1 GB; subject to Storage plan)
                       <input
                         type="file"
                         required

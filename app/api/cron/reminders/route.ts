@@ -1,3 +1,4 @@
+import {cleanupAIUploads} from '../../../../lib/server/ai-cleanup';
 import { timingSafeEqual } from "node:crypto";
 import { adminDb, deliverQueue } from "../../../../lib/server/notifications";
 export const runtime = "nodejs";
@@ -17,8 +18,9 @@ export async function GET(request: Request) {
     const r = await db.rpc("fielddocs_enqueue_digest");
     if (r.error) throw r.error;
     const result = await deliverQueue({ limit: 25 });
+    let aiCleanup: number|string;try{aiCleanup=await cleanupAIUploads();}catch{aiCleanup="Cleanup failed; retry after checking V7.8 migration and Storage.";}
     return Response.json(
-      { enqueued: r.data, ...result },
+      { enqueued: r.data, ...result, aiCleanup },
       { status: result.failed ? 503 : 200 },
     );
   } catch {

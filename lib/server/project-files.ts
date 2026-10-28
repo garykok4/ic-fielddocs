@@ -74,7 +74,7 @@ export function revisionInput(b: Record<string, unknown>) {
     b.bytes < 1 ||
     b.bytes > MAX_FILE_BYTES
   )
-    throw new FileError("Files must be between 1 byte and 50 MB.");
+    throw new FileError("Files must be between 1 byte and 1 GB (subject to your Storage plan limit).");
   if (
     typeof b.issue_date !== "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(b.issue_date) ||

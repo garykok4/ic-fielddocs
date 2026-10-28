@@ -1,4 +1,5 @@
 "use client";
+import PreliminaryBudget from "../../../components/PreliminaryBudget";
 import CostControl from "../../../components/CostControl";
 import WeekReviewExport from "../../../components/WeekReviewExport";
 import CustomerTaskPicker from "../../../components/CustomerTaskPicker";
@@ -25,6 +26,7 @@ const tabs = [
   ["schedule", "Schedule"],
   ["tasks", "Tasks"],
   ["files", "Files"],
+  ["budget", "Budget"],
   ["costs", "Cost control"],
   ["customer", "Customer summary"],
 ];
@@ -38,6 +40,7 @@ export default function ProjectWorkspace() {
     [tasks, setTasks] = useState<ProjectTask[]>([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true);
+  const [budgetDirty,setBudgetDirty]=useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const refreshSeq = useRef(0);
@@ -104,6 +107,7 @@ export default function ProjectWorkspace() {
     };
   }, [profile, tab, id]);
   function choose(next: string) {
+    if(tab==="budget"&&next!==tab&&budgetDirty&&!confirm("Leave this budget and discard unsaved changes?"))return;
     setTab(next);
     window.history.replaceState(null, "", `/projects/${id}?tab=${next}`);
     if (["overview", "customer"].includes(next)) void refresh();
@@ -350,6 +354,7 @@ export default function ProjectWorkspace() {
               projectName={project?.project_name || "Project"}
             />
           )}
+          {tab === "budget" && <PreliminaryBudget key={id} fixedProject={id} onDirty={setBudgetDirty}/>}
           {tab === "costs" && <CostControl key={id} project={id} projectName={project?.project_name || "Project"}/>}
           {reviewOpen && <WeekReviewExport key={id} project={id} projectName={project?.project_name || "Project"} close={() => setReviewOpen(false)} />}
           {pickerOpen && <CustomerTaskPicker key={id} project={id} close={() => setPickerOpen(false)} saved={s => {refreshSeq.current++; setSnapshot(s); setActivities(calculate(s.tasks,s.links, undefined, s.closures));}} />}
