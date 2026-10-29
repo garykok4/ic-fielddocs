@@ -25,6 +25,7 @@ export default function RootLayout({
     [error, setError] = useState("");
   const publicPage = [
     "/login",
+    "/account-setup",
     "/sign-in",
     "/orientation",
     "/visitor",
@@ -169,6 +170,7 @@ export default function RootLayout({
               {profile?.role === "admin" && (
                 <>
                   <div className="nav-section">ADMINISTRATION</div>
+                  {item("/admin/staff", "Team & access")}
                   {item("/admin/project-staff", "Project team")}
                   {item("/admin/notifications", "Notification delivery")}
                 </>
