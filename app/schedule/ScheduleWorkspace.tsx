@@ -98,6 +98,7 @@ export default function ScheduleWorkspace({
   fixedProject?: string;
   planningMode?: boolean;
 }) {
+  const [clearOpen,setClearOpen]=useState(false);
   const [draftMode,setDraftMode]=useState<"import"|"ai"|null>(null);
   const [closureText,setClosureText]=useState("");
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -206,6 +207,7 @@ export default function ScheduleWorkspace({
   }
   useEffect(() => {
     setSnap(null);
+    setClearOpen(false);
     setEditing(null);
     setUndo(null);
     setCollapsed(new Set());
@@ -331,6 +333,33 @@ export default function ScheduleWorkspace({
       activeMutation.current = false;
       setBusy(false);
     }
+  }
+  async function clearSchedule() {
+    if (!snap || busy || stale || activeMutation.current) return;
+    const before = snap, id = project;
+    activeMutation.current = true;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const r = await supabase.rpc("schedule_v782_clear", {p_project:id,p_revision:before.revision});
+      if (r.error) throw r.error;
+      if (projectRef.current !== id) return;
+      loadSeq.current++;
+      setSnap(clean(r.data as Snapshot));
+      setUndo(before);
+      setEditing(null); setCollapsed(new Set());
+      setSearch(""); setPhaseFilter(""); setTradeFilter(""); setStatusFilter("");
+      setCriticalOnly(false); setLookahead(0); setStageFilter("");
+      setClearOpen(false); setStale(false);
+      setMessage("Schedule cleared. Undo last change can restore tasks, links and baseline until your next change or reload. Project shutdown dates were kept.");
+    } catch (e) {
+      if (projectRef.current === id) {
+        const message=(e as Error).message;
+        setError(message.includes("schema cache") || message.includes("does not exist")
+          ? "Run the V7.8.2 Supabase SQL from the updater, then try again. Nothing was cleared."
+          : message);
+        if(message.includes("another session"))setStale(true);
+      }
+    } finally { activeMutation.current=false; setBusy(false); }
   }
   async function patch(id: string, change: Partial<Task>) {
     if (!snap) return false;
@@ -466,11 +495,12 @@ export default function ScheduleWorkspace({
     projects.find((p) => p.id === project)?.project_name || "Project";
   return (
     <main className="fd">
+      {clearOpen&&snap&&<ClearScheduleDialog key={project} title={title} snapshot={snap} busy={busy} stale={stale} error={error} close={()=>setClearOpen(false)} clear={clearSchedule}/>}
       {draftMode&&snap&&<ScheduleDraftBuilder key={project} project={project} snapshot={snap} mode={draftMode} close={()=>setDraftMode(null)} saved={s=>{loadSeq.current++;setSnap(clean(s));setClosureText((s.closures||[]).join("\n"));setUndo(null);setStale(false);setMessage("Schedule draft imported. Review the resulting project dates.");}}/>}
       {reviewOpen&&<WeekReviewExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project"} close={()=>setReviewOpen(false)}/>}
       {exportOpen&&<LookaheadExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project schedule"} defaultFormat={view==='calendar'?'calendar':'gantt'} close={()=>setExportOpen(false)}/>}
       <div className="screen">
-      {snap&&<><div className="toolbar"><button disabled={busy||stale} onClick={()=>setDraftMode("import")}>Import schedule</button><button disabled={busy||stale} onClick={()=>setDraftMode("ai")}>Build with AI</button></div>
+      {snap&&<><div className="toolbar"><button disabled={busy||stale} onClick={()=>setDraftMode("import")}>Import schedule</button><button disabled={busy||stale} onClick={()=>setDraftMode("ai")}>Build with AI</button><button className="clear-schedule-button" disabled={busy||stale||!!editing||(!snap.tasks.length&&!snap.baseline&&!snap.import_history?.length)} onClick={()=>{setError("");setClearOpen(true);}}>Clear schedule</button></div>
       <details><summary>Project shutdown dates ({snap.closures?.length||0})</summary><p>Additional to Ontario holidays. Changing these dates recalculates every activity in the project.</p><label>Shutdown dates (YYYY-MM-DD, one per line)<textarea aria-label="Project shutdown dates" value={closureText} onChange={e=>setClosureText(e.target.value)}/></label><button disabled={busy||stale} onClick={()=>{const dates=closureText.split(/[\s,;]+/).filter(Boolean);if(dates.some(d=>!validDate(d))){setError("Enter valid YYYY-MM-DD shutdown dates.");return;}void commit({...snap,closures:[...new Set(dates)].sort()},"Project calendar");}}>Save shutdown dates</button></details>
       {!!snap.import_history?.length&&<details><summary>Imported schedule assumptions & sources</summary>{snap.import_history.map((h,i)=><article key={i}><h3>{h.metadata.source}</h3><p>{h.created_at} · Target {h.metadata.target||"not specified"}</p><p style={{whiteSpace:"pre-wrap"}}>{h.metadata.assumptions}</p></article>)}</details>}</>}
 
@@ -2340,4 +2370,23 @@ function PlanningTemplateDialog({
       </form>
     </dialog>
   );
+}
+
+function ClearScheduleDialog({title,snapshot,busy,stale,error,close,clear}:{title:string;snapshot:Snapshot;busy:boolean;stale:boolean;error:string;close:()=>void;clear:()=>Promise<void>}) {
+  const dialog=useRef<HTMLDialogElement>(null),[confirmation,setConfirmation]=useState("");
+  useEffect(()=>{dialog.current?.showModal();},[]);
+  const phases=snapshot.tasks.filter(t=>t.item_type==="phase").length;
+  return <dialog ref={dialog} className="planning-dialog" aria-labelledby="clear-schedule-title" onCancel={e=>{e.preventDefault();if(!busy)close();}}>
+    <form onSubmit={e=>{e.preventDefault();if(confirmation==="CLEAR"&&!busy&&!stale)void clear();}}>
+      <h2 id="clear-schedule-title">Clear schedule for {title}?</h2>
+      <p>This removes <strong>{snapshot.tasks.length-phases} tasks and milestones, {phases} phases, and {snapshot.links.length} dependencies</strong> from this project's Gantt, calendar and customer schedule summary.</p>
+      <p>All stages and hidden or filtered tasks are included. The saved baseline and import history will also be cleared, so you can import the same file again.</p>
+      <p>Project shutdown dates, Ontario holidays, separate to-dos, reports, files and budgets stay in place. To-dos linked to removed activities become unlinked.</p>
+      <p>Undo can restore tasks, links and baseline until your next change or reload. It does not restore import history or to-do activity links. Export the schedule first if you need a lasting record.</p>
+      {error&&<p role="alert" className="notice warning">{error}</p>}
+      {stale&&<p role="alert">Another session changed this schedule. Cancel and reload before clearing.</p>}
+      <label>Type CLEAR to confirm<input autoFocus aria-label="Type CLEAR to confirm" autoComplete="off" value={confirmation} disabled={busy} onChange={e=>setConfirmation(e.target.value)}/></label>
+      <div className="toolbar"><button type="button" disabled={busy} onClick={close}>Cancel</button><button className="clear-schedule-button" type="submit" disabled={busy||stale||confirmation!=="CLEAR"}>{busy?"Clearing…":"Clear entire schedule"}</button></div>
+    </form>
+  </dialog>;
 }

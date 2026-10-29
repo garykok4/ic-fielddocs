@@ -884,3 +884,5 @@
 
 /* V7.1 multi-month planning */
 .fd .calendar-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,600px),1fr));gap:20px}.fd .calendar-embedded{min-width:0;border:1px solid #dce4ed;border-radius:8px;padding:10px}.fd .calendar-embedded h3{margin:6px 0 14px}.fd .calendar-embedded .calendar-scroll{min-width:0}.fd .calendar-embedded .calweek,.fd .calendar-embedded .weekday{min-width:0}.fd .gantt-controls{flex-wrap:wrap}.fd .gantt-controls input{width:auto}.fd .calendar-embedded .calendar-event{font-size:10px}.fd .month-head span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.fd button.clear-schedule-button{background:#fff3f1;color:#a52b22;border:1px solid #dfaaa4}.fd button.clear-schedule-button:hover:not(:disabled){background:#ffe3df}
