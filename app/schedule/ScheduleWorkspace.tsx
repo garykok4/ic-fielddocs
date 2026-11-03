@@ -34,6 +34,7 @@ import {
   lanes,
 } from "./engine";
 import "./schedule.css";
+import {StageTemplates,Reminders} from "./StageTools";
 import { addPreconstructionTemplate } from "./preconstruction";
 
 type GanttZoom = "week" | "month" | "six" | "year" | "project";
@@ -101,6 +102,7 @@ export default function ScheduleWorkspace({
   const [clearOpen,setClearOpen]=useState(false);
   const [draftMode,setDraftMode]=useState<"import"|"ai"|null>(null);
   const [closureText,setClosureText]=useState("");
+  const [kitsOpen,setKitsOpen]=useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [exportOpen,setExportOpen]=useState(false);
   const [reviewOpen,setReviewOpen]=useState(false);
@@ -139,9 +141,9 @@ export default function ScheduleWorkspace({
     stage:
       snap?.tasks.find((t) => t.id === parent)?.stage ||
       (stageFilter as Task["stage"]) ||
-      (planningMode ? "preconstruction" : "construction"),
+      "construction",
     date_confidence: "estimated",
-    customer_visible: planningMode,
+    customer_visible: stageFilter==="preconstruction",
   });
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -306,7 +308,8 @@ export default function ScheduleWorkspace({
       validate(next.tasks, next.links);
       activeMutation.current = true;
       setBusy(true);
-      const r = await supabase.rpc("schedule_v75_save", {
+      const r = await supabase.rpc("schedule_v710_save", {
+        p_starts:Object.fromEntries(calculate(next.tasks,next.links,undefined,next.closures).map(t=>[t.id,t.start])),
         p_project: id,
         p_revision: before.revision,
         p_tasks: next.tasks,
@@ -496,7 +499,7 @@ export default function ScheduleWorkspace({
   return (
     <main className="fd">
       {clearOpen&&snap&&<ClearScheduleDialog key={project} title={title} snapshot={snap} busy={busy} stale={stale} error={error} close={()=>setClearOpen(false)} clear={clearSchedule}/>}
-      {draftMode&&snap&&<ScheduleDraftBuilder key={project} project={project} snapshot={snap} mode={draftMode} close={()=>setDraftMode(null)} saved={s=>{loadSeq.current++;setSnap(clean(s));setClosureText((s.closures||[]).join("\n"));setUndo(null);setStale(false);setMessage("Schedule draft imported. Review the resulting project dates.");}}/>}
+      {draftMode&&snap&&<ScheduleDraftBuilder key={project} project={project} snapshot={snap} defaultStage={stageFilter==="preconstruction"?"preconstruction":"construction"} mode={draftMode} close={()=>setDraftMode(null)} saved={s=>{loadSeq.current++;setSnap(clean(s));setClosureText((s.closures||[]).join("\n"));setUndo(null);setStale(false);setMessage("Schedule draft imported. Review the resulting project dates.");}}/>}
       {reviewOpen&&<WeekReviewExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project"} close={()=>setReviewOpen(false)}/>}
       {exportOpen&&<LookaheadExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project schedule"} defaultFormat={view==='calendar'?'calendar':'gantt'} close={()=>setExportOpen(false)}/>}
       <div className="screen">
@@ -508,9 +511,7 @@ export default function ScheduleWorkspace({
           <div>
             <div className="eyebrow">FIELD DOCS / SCHEDULING</div>
             <h1>
-              {planningMode
-                ? "Preconstruction & approvals"
-                : "Project schedule"}
+              Project schedule
             </h1>
             <p>Plan the work. See what controls the finish.</p>
           </div>
@@ -527,37 +528,19 @@ export default function ScheduleWorkspace({
             ))}
           </select>
         </header>
-        <OntarioCalendarInfo/>
+        <OntarioCalendarInfo/>{snap&&!calculated.problem&&<Reminders key={project} project={project} revision={snap.revision} rows={activities}/>}
         {snap && (
           <div className="toolbar">
-            <label>
-              Stage{" "}
-              <select
-                aria-label="Schedule stage"
-                value={stageFilter}
-                onChange={(e) => setStageFilter(e.target.value)}
-              >
-                <option value="">All stages</option>
-                <option value="preconstruction">Preconstruction</option>
-                <option value="construction">Construction</option>
-              </select>
-            </label>
+            <div aria-label="Schedule stage">{[["","Full project"],["preconstruction","Preconstruction"],["construction","Construction"]].map(([v,n])=><button key={v} aria-pressed={stageFilter===v} onClick={()=>{setStageFilter(v);setPhaseFilter("");setTradeFilter("");}}>{n}</button>)}</div>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export schedule</button>
             <small>Tasks auto-sort by start date within each phase.</small>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setReviewOpen(true)}>Export week in review</button>
             <a href={`/projects/${project}`}>Project home & tasks</a>
             <a href={`/projects/${project}?tab=customer`}>Customer summary</a>
-            {planningMode && (
-              <button
-                disabled={busy || stale}
-                onClick={() => setTemplateOpen(true)}
-              >
-                Add planning template
-              </button>
-            )}
+            <button disabled={busy||stale||!!editing} onClick={()=>setKitsOpen(true)}>Use a template</button>
           </div>
         )}
-        {planningMode && (
+        {stageFilter==="preconstruction" && (
           <p className="notice warning">
             Planning dates are estimates until confirmed. Template durations are
             starting allowances, not municipal timelines. Critical path is
@@ -1080,6 +1063,8 @@ export default function ScheduleWorkspace({
           </tbody>
         </table>
       </section>
+      
+      {kitsOpen&&snap&&<StageTemplates stage={stageFilter} project={project} snap={snap} save={commit} busy={busy||stale} close={()=>setKitsOpen(false)} legacy={()=>{setKitsOpen(false);setTemplateOpen(true)}}/>}
       {templateOpen && snap && (
         <PlanningTemplateDialog
           busy={busy}

@@ -15,13 +15,14 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const db = adminDb();
+    const procurement = await db.rpc("fd_procurement_tick");
     const r = await db.rpc("fielddocs_enqueue_digest");
     if (r.error) throw r.error;
     const result = await deliverQueue({ limit: 25 });
     let aiCleanup: number|string;try{aiCleanup=await cleanupAIUploads();}catch{aiCleanup="Cleanup failed; retry after checking V7.8 migration and Storage.";}
     return Response.json(
-      { enqueued: r.data, ...result, aiCleanup },
-      { status: result.failed ? 503 : 200 },
+      { enqueued: r.data, ...result, aiCleanup, procurementTasks:procurement.data, procurementError:procurement.error?.message },
+      { status: (result.failed || procurement.error) ? 503 : 200 },
     );
   } catch {
     return Response.json(

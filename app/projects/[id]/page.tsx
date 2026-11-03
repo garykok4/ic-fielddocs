@@ -23,7 +23,6 @@ import TaskBoard from "../../../components/TaskBoard";
 import "../../../components/project-work.css";
 const tabs = [
   ["overview", "Overview"],
-  ["preconstruction", "Preconstruction"],
   ["schedule", "Schedule"],
   ["tasks", "Tasks"],
   ["files", "Files"],
@@ -42,6 +41,7 @@ export default function ProjectWorkspace() {
     [tasks, setTasks] = useState<ProjectTask[]>([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true);
+  const [planningStart,setPlanningStart]=useState(false);
   const [settingsDirty,setSettingsDirty]=useState(false);
   const [budgetDirty,setBudgetDirty]=useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -84,7 +84,8 @@ export default function ProjectWorkspace() {
         const requested = new URLSearchParams(window.location.search).get(
           "tab",
         );
-        setTab(tabs.some((t) => t[0] === requested) ? requested! : "overview");
+        setPlanningStart(requested==="preconstruction");
+        setTab(requested==="preconstruction"?"schedule":tabs.some((t) => t[0] === requested) ? requested! : "overview");
         await refresh();
       } catch (e) {
         if (alive) setError((e as Error).message);
@@ -112,7 +113,8 @@ export default function ProjectWorkspace() {
   function choose(next: string) {
     if(tab==="budget"&&next!==tab&&budgetDirty&&!confirm("Leave this budget and discard unsaved changes?"))return;
     if(tab==="settings"&&next!==tab&&settingsDirty&&!confirm("Leave settings and discard unsaved changes?"))return;
-    setTab(next);
+    setPlanningStart(next==="preconstruction");
+    setTab(next==="preconstruction"?"schedule":next);
     window.history.replaceState(null, "", `/projects/${id}?tab=${next}`);
     if (["overview", "customer"].includes(next)) void refresh();
   }
@@ -333,15 +335,8 @@ export default function ProjectWorkspace() {
               </div>
             </>
           )}
-          {tab === "preconstruction" && (
-            <ScheduleWorkspace
-              key={"pre-" + id}
-              fixedProject={id}
-              planningMode
-            />
-          )}
           {tab === "schedule" && (
-            <ScheduleWorkspace key={"schedule-" + id} fixedProject={id} />
+            <ScheduleWorkspace key={"schedule-" + id} fixedProject={id} planningMode={planningStart} />
           )}
           {tab === "tasks" && (
             <TaskBoard
