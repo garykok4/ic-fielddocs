@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import {Snapshot} from '../app/schedule/engine';
 import {ontarioToday,shiftDate} from '../lib/work-calendar';
-import {briefWeek,briefText,BriefTodo} from '../lib/site-brief';
+import {briefWeek,briefText} from '../lib/site-brief';
 import {buildLookahead} from '../lib/lookahead';
 import './lookahead-export.css';
 type Project={id:string;project_name:string};
@@ -17,9 +17,7 @@ export default function WeeklySiteBrief({projects,close}:{projects:Project[];clo
  const out:Draft[]=[];
  for(const project of projects.filter(p=>selected.includes(p.id))){
  const r=await supabase.rpc('schedule_v75_read',{p_project:project.id});if(r.error)throw Error(project.project_name+': '+r.error.message);
- const todos:BriefTodo[]=[];
- if(!customer)for(let offset=0;;offset+=500){const q=await supabase.from('project_tasks').select('id,title,due_date,status').eq('project_id',project.id).neq('status','done').lte('due_date',shiftDate(start,20)).order('id').range(offset,offset+499);if(q.error)throw q.error;todos.push(...q.data||[]);if((q.data||[]).length<500)break;}
- out.push({project,snapshot:r.data,text:briefText(project.project_name,r.data,start,todos,ontarioToday(),customer)});
+ out.push({project,snapshot:r.data,text:briefText(project.project_name,r.data,start,ontarioToday(),customer)});
  }if(token===seq.current)setDrafts(out);
  }catch(e){if(token===seq.current)setError((e as Error).message);}finally{if(token===seq.current)setBusy(false);}}
  async function action(work:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await work();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
@@ -28,8 +26,8 @@ export default function WeeklySiteBrief({projects,close}:{projects:Project[];clo
  {error&&<p role="alert" className="la-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
  <fieldset disabled={busy}><label>Week containing<input type="date" value={start} onChange={e=>{if(e.target.value){setStart(briefWeek(e.target.value));invalidate();}}}/></label>
  {projects.length>1&&<details open><summary>Projects ({selected.length} selected)</summary><button onClick={()=>{setSelected(projects.map(p=>p.id));invalidate();}}>Select all</button><button onClick={()=>{setSelected([]);invalidate();}}>Clear</button>{projects.map(p=><label key={p.id}><input type="checkbox" checked={selected.includes(p.id)} onChange={e=>{setSelected(s=>e.target.checked?[...s,p.id]:s.filter(id=>id!==p.id));invalidate();}}/>{p.project_name}</label>)}</details>}
- <label><input type="checkbox" checked={customer} onChange={e=>{setCustomer(e.target.checked);invalidate();}}/>Customer edition — only customer-visible schedule activities; omit internal to-dos</label>
- <p>Monday–Sunday. Work is grouped by phase and start date. Finishing and attention sections may repeat an activity deliberately. Upcoming preparations use your open project to-dos, including released long-lead tasks. No emails are sent.</p>
+ <label><input type="checkbox" checked={customer} onChange={e=>{setCustomer(e.target.checked);invalidate();}}/>Customer edition — only customer-visible schedule activities</label>
+ <p>Monday–Sunday. Each open activity appears once, with combined starting/continuing and finishing headings. All overdue activities appear first. Due dates and countdowns use today in Ontario, excluding weekends, Ontario holidays and project shutdowns. Completed activities are omitted. No emails are sent.</p>
  <button disabled={!selected.length} onClick={()=>void generate()}>{busy?'Preparing…':'Generate brief'}</button>
  {drafts.map((d,i)=><section key={d.project.id}><h3>{d.project.project_name}</h3><label>Edit brief<textarea rows={22} maxLength={50000} style={{width:'100%',lineHeight:1.6}} value={d.text} onChange={e=>{setDrafts(ds=>ds.map((x,j)=>j===i?{...x,text:e.target.value}:x));setReviewed(false);setNotice('');}}/></label>
  <button onClick={()=>void action(async()=>{await fresh(d);const {downloadLookahead}=await import('../lib/lookahead-pdf');await downloadLookahead(buildLookahead(d.project.project_name,d.snapshot,{start,end:shiftDate(start,6),format:'gantt',paper:'tabloid',layout:'pages',colourBy:'phase',phase:'',trade:'',stage:'',customerOnly:customer,milestones:true,responsible:true,progress:true,critical:true,dependencies:false,excludeComplete:false,selected:null}));setNotice('Selected-week Gantt downloaded separately. Attach it with the brief.');})}>Download this week’s Gantt</button>
