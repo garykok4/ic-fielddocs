@@ -1,4 +1,5 @@
 "use client";
+import WeeklySiteBrief from "../components/WeeklySiteBrief";
 import WorkDayCountdown from "../components/WorkDayCountdown";
 import {readableDate,readableDateTime} from "../lib/dates";
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +17,7 @@ import "../components/project-work.css";
 import "./dashboard.css";
 type Card = { project: Project; activities: Activity[]; problem: string };
 export default function Dashboard() {
+  const [briefOpen,setBriefOpen]=useState(false);
   const [profile, setProfile] = useState<Person | null>(null),
     [cards, setCards] = useState<Card[]>([]),
     [tasks, setTasks] = useState<ProjectTask[]>([]),
@@ -146,6 +148,8 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+      {briefOpen&&<WeeklySiteBrief projects={cards.map(c=>c.project)} close={()=>setBriefOpen(false)}/>}
+      {profile?.role==="admin"&&cards.length>0&&<button onClick={()=>setBriefOpen(true)}>Generate weekly project briefs</button>}
       {error && (
         <p role="alert" className="notice error">
           {error}

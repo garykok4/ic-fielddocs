@@ -1,4 +1,5 @@
 "use client";
+import SavedSiteBriefs from "../../../components/SavedSiteBriefs";
 import ProjectSettings from "../../../components/ProjectSettings";
 import PreliminaryBudget from "../../../components/PreliminaryBudget";
 import CostControl from "../../../components/CostControl";
@@ -444,6 +445,7 @@ export default function ProjectWorkspace() {
                   </table>
                 </div>
               )}
+              <SavedSiteBriefs key={id} project={id}/>
               <p className="muted no-print">
                 Only activities marked for customers appear. Internal notes,
                 task comments, and staff contact details are excluded. Print or

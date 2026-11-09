@@ -5,6 +5,7 @@ import WorkDayCountdown from "../../components/WorkDayCountdown";
 import OntarioCalendarInfo from "../../components/OntarioCalendarInfo";
 import ScheduleDraftBuilder from "../../components/ScheduleDraftBuilder";
 import WeekReviewExport from "../../components/WeekReviewExport";
+import WeeklySiteBrief from "../../components/WeeklySiteBrief";
 import LookaheadExport from "../../components/LookaheadExport";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { requireActiveStaff } from "../../lib/auth";
@@ -104,6 +105,7 @@ export default function ScheduleWorkspace({
   const [closureText,setClosureText]=useState("");
   const [kitsOpen,setKitsOpen]=useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [briefOpen,setBriefOpen]=useState(false);
   const [exportOpen,setExportOpen]=useState(false);
   const [reviewOpen,setReviewOpen]=useState(false);
   const [stageFilter, setStageFilter] = useState(
@@ -500,6 +502,7 @@ export default function ScheduleWorkspace({
     <main className="fd">
       {clearOpen&&snap&&<ClearScheduleDialog key={project} title={title} snapshot={snap} busy={busy} stale={stale} error={error} close={()=>setClearOpen(false)} clear={clearSchedule}/>}
       {draftMode&&snap&&<ScheduleDraftBuilder key={project} project={project} snapshot={snap} defaultStage={stageFilter==="preconstruction"?"preconstruction":"construction"} mode={draftMode} close={()=>setDraftMode(null)} saved={s=>{loadSeq.current++;setSnap(clean(s));setClosureText((s.closures||[]).join("\n"));setUndo(null);setStale(false);setMessage("Schedule draft imported. Review the resulting project dates.");}}/>}
+      {briefOpen&&<WeeklySiteBrief key={project} projects={[{id:project,project_name:projects.find(p=>p.id===project)?.project_name||"Project"}]} close={()=>setBriefOpen(false)}/>}
       {reviewOpen&&<WeekReviewExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project"} close={()=>setReviewOpen(false)}/>}
       {exportOpen&&<LookaheadExport key={project} project={project} projectName={projects.find(p=>p.id===project)?.project_name||"Project schedule"} defaultFormat={view==='calendar'?'calendar':'gantt'} close={()=>setExportOpen(false)}/>}
       <div className="screen">
@@ -533,6 +536,7 @@ export default function ScheduleWorkspace({
           <div className="toolbar">
             <div aria-label="Schedule stage">{[["","Full project"],["preconstruction","Preconstruction"],["construction","Construction"]].map(([v,n])=><button key={v} aria-pressed={stageFilter===v} onClick={()=>{setStageFilter(v);setPhaseFilter("");setTradeFilter("");}}>{n}</button>)}</div>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setExportOpen(true)}>Export schedule</button>
+            <button disabled={busy||stale||!!editing||!!calculated.problem} onClick={()=>setBriefOpen(true)}>Generate weekly brief</button>
             <small>Tasks auto-sort by start date within each phase.</small>
             <button disabled={busy || !!editing || !!calculated.problem} onClick={()=>setReviewOpen(true)}>Export week in review</button>
             <a href={`/projects/${project}`}>Project home & tasks</a>
