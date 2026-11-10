@@ -1,132 +1,32 @@
-"use client";
-import {readableDate,readableDateTime} from "../../../lib/dates";
-
-import { requireActiveStaff } from "../../../lib/auth";
-
-import { useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabase";
-
-export default function OrientationHistoryPage() {
-  const [records, setRecords] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [selectedProject, setSelectedProject] = useState("");
-
-  useEffect(() => {
-    requireActiveStaff();
-    fetchProjects();
-    fetchOrientations();
-  }, []);
-
-  async function fetchProjects() {
-    const { data } = await supabase
-      .from("projects")
-      .select("*")
-      .order("project_name");
-
-    setProjects(data || []);
-  }
-
-  async function fetchOrientations() {
-    let query = supabase
-      .from("site_orientations")
-      .select(`
-        *,
-        projects (
-          project_name
-        )
-      `)
-      .order("completed_at", { ascending: false });
-
-    if (selectedProject) {
-      query = query.eq("project_id", selectedProject);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    setRecords(data || []);
-  }
-
-  return (
-    <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
-      <h1>Orientation Records</h1>
-
-      <section className="card">
-        <label>Project Filter</label>
-
-        <select
-          value={selectedProject}
-          onChange={(e) => setSelectedProject(e.target.value)}
-        >
-          <option value="">All Projects</option>
-
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.project_name}
-            </option>
-          ))}
-        </select>
-
-        <div style={{ marginTop: 16 }}>
-          <button onClick={fetchOrientations}>
-            Load Records
-          </button>
-
-          <button
-            onClick={() => window.print()}
-            style={{ marginLeft: 12 }}
-          >
-            Print / Save PDF
-          </button>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2>Total Records: {records.length}</h2>
-      </section>
-
-      {records.map((r) => (
-        <section
-          key={r.id}
-          className="card"
-          style={{
-            pageBreakInside: "avoid",
-          }}
-        >
-          <h2>{r.worker_name}</h2>
-
-          <p>
-            <strong>Company:</strong> {r.company_name}
-          </p>
-
-          <p>
-            <strong>Phone:</strong> {r.phone}
-          </p>
-
-          <p>
-            <strong>Project:</strong>{" "}
-            {r.projects?.project_name || "Unknown"}
-          </p>
-
-          <p>
-            <strong>Completed:</strong>{" "}
-            {readableDateTime(r.completed_at)}
-          </p>
-
-          <hr />
-
-          <p>✓ Site rules acknowledged</p>
-          <p>✓ PPE requirements acknowledged</p>
-          <p>✓ Emergency procedures acknowledged</p>
-          <p>✓ Hazard reporting acknowledged</p>
-          <p>✓ Daily sign-in requirements acknowledged</p>
-        </section>
-      ))}
-    </main>
-  );
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {requireActiveStaff} from '../../../lib/auth';
+import {supabase} from '../../../lib/supabase';
+import {readableDateTime} from '../../../lib/dates';
+import {OrientationRecord,OrientationSort,companyName,companyKey,orientationRows,selectOrientationRange,orientationChecks,ackLabel} from '../../../lib/orientation-history';
+import './orientation-history.css';
+export default function OrientationHistoryPage(){
+ const [records,setRecords]=useState<OrientationRecord[]>([]),[project,setProject]=useState(''),[company,setCompany]=useState(''),[search,setSearch]=useState(''),[sort,setSort]=useState<OrientationSort>('company'),[selected,setSelected]=useState<Set<string>>(new Set()),[label,setLabel]=useState(''),[busy,setBusy]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const anchor=useRef<string|null>(null),seq=useRef(0),mutating=useRef(false);
+ function clear(){setSelected(new Set());anchor.current=null;setNotice('');}
+ async function load(){const token=++seq.current;setBusy(true);setError('');clear();try{const staff=await requireActiveStaff();if(!staff)return;const rows:OrientationRecord[]=[];let after:string|null=null;for(;;){const r=await supabase.rpc('fd_orientation_read',{p_after:after});if(r.error)throw r.error;const batch=(r.data||[]) as OrientationRecord[];rows.push(...batch);if(batch.length<500)break;const next=batch[batch.length-1].id;if(next===after)throw Error('Record pagination did not advance. Please reload.');after=next;}if(token===seq.current)setRecords(rows);}catch(e){if(token===seq.current){setError((e as Error).message);setRecords([]);}}finally{if(token===seq.current)setBusy(false);}}
+ useEffect(()=>{void load();return()=>{seq.current++;};},[]);
+ const rows=orientationRows(records,project,company,search,sort);
+ const projects=Array.from(new Map(records.map(r=>[r.project_id,r.project_name])).entries()).sort((a,b)=>a[1].localeCompare(b[1]));
+ const companies=Array.from(new Map(records.filter(r=>!project||r.project_id===project).map(r=>[companyKey(companyName(r)),companyName(r)])).entries()).sort((a,b)=>a[1].localeCompare(b[1]));
+ const chosen=rows.filter(r=>selected.has(r.id));
+ async function group(reset=false){if(mutating.current||!chosen.length)return;if(!reset&&!label.trim()){setError('Enter or choose a company name.');return;}mutating.current=true;setBusy(true);setError('');setNotice('');try{const r=await supabase.rpc('fd_orientation_group',{p_ids:chosen.map(r=>r.id),p_label:reset?null:label.trim()});if(r.error)throw r.error;await load();setCompany('');setSearch('');setLabel('');setNotice(reset?'Company grouping removed. Original entries are unchanged.':`${r.data} records grouped under ${label.trim()}. Original entries are unchanged.`);}catch(e){setError((e as Error).message);}finally{setBusy(false);mutating.current=false;}}
+ async function download(){if(mutating.current||!chosen.length)return;mutating.current=true;setBusy(true);setError('');setNotice('');try{const {orientationPdf}=await import('../../../lib/orientation-pdf');const doc=await orientationPdf(chosen);doc.save('FieldDocs-Selected-Orientation-Records.pdf');setNotice(`${chosen.length} selected records downloaded in the displayed order.`);}catch(e){setError((e as Error).message);}finally{mutating.current=false;setBusy(false);}}
+ return <main className="orientation-history"><header><div><p>I/C CONSTRUCTION / SITE RECORDS</p><h1>Orientation records</h1></div><button disabled={busy} onClick={()=>void load()}>Refresh records</button></header>
+ {error&&<p role="alert" className="oh-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
+ <fieldset disabled={busy} className="oh-filters"><label>Project<select value={project} onChange={e=>{setProject(e.target.value);setCompany('');clear();}}><option value="">All accessible projects</option>{projects.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
+ <label>Company<select value={company} onChange={e=>{setCompany(e.target.value);clear();}}><option value="">All companies</option>{companies.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
+ <label>Search<input value={search} placeholder="Company, worker or project" onChange={e=>{setSearch(e.target.value);clear();}}/></label>
+ <label>Sort<select value={sort} onChange={e=>{setSort(e.target.value as OrientationSort);clear();}}><option value="company">Company A–Z, then worker</option><option value="worker">Worker A–Z</option><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label></fieldset>
+ <section className="oh-actions"><strong>{rows.length} records · {chosen.length} selected</strong><p>Select the first checkbox, then hold Shift and select the last checkbox to select a range. Changing a filter or sort clears your selection.</p><button disabled={busy||!rows.length} onClick={()=>{setSelected(new Set(rows.map(r=>r.id)));anchor.current=null;}}>Select all filtered</button><button disabled={busy||!chosen.length} onClick={clear}>Clear selection</button><button disabled={busy||!chosen.length} onClick={()=>void download()}>Download selected PDF ({chosen.length})</button>
+ <details><summary>Group selected records by company</summary><p>For spelling variants, select the matching records and assign one standard company name. This only changes their company grouping; it does not change what the worker submitted.</p><label>Standard company name<input disabled={busy} maxLength={150} list="oh-company-names" value={label} onChange={e=>setLabel(e.target.value)}/></label><datalist id="oh-company-names">{companies.map(([key,name])=><option key={key} value={name}/>)}</datalist><button disabled={busy||!chosen.length||chosen.length>5000||!label.trim()} onClick={()=>void group()}>Apply company group</button><button disabled={busy||!chosen.length||chosen.length>5000} onClick={()=>void group(true)}>Use original company entries</button>{chosen.length>5000&&<p>Select at most 5000 records per grouping action.</p>}</details></section>
+ {busy&&<p role="status">Working…</p>}
+ <div className="oh-table"><table><thead><tr><th>Select</th><th>Company group</th><th>Worker</th><th>Project</th><th>Completed</th><th>Details</th></tr></thead><tbody>{rows.map(r=><tr key={r.id} className={selected.has(r.id)?'oh-selected':''}><td><input type="checkbox" aria-label={`Select ${r.worker_name||'unnamed worker'} at ${r.company_name||'unknown company'}`} checked={selected.has(r.id)} disabled={busy} onChange={()=>{}} onClick={e=>{const checked=e.currentTarget.checked,previousAnchor=anchor.current,range=e.shiftKey;setSelected(s=>selectOrientationRange(rows.map(r=>r.id),s,previousAnchor,r.id,range,checked));anchor.current=r.id;}}/></td><td>{companyName(r)}{r.company_label&&<small>Entered: {r.company_name||'Not recorded'}</small>}</td><td>{r.worker_name||'Not recorded'}</td><td>{r.project_name}</td><td>{r.completed_at?readableDateTime(r.completed_at):'Not recorded'}</td><td><details><summary>View record</summary><p>Phone: {r.phone||'Not recorded'}</p><p>Original company: {r.company_name||'Not recorded'}</p>{orientationChecks.map(([key,name])=><p key={key}>{name}: {ackLabel(r[key])}</p>)}<small>Record ID: {r.id}</small></details></td></tr>)}</tbody></table></div>
+ {!busy&&!rows.length&&<p>No orientation records match your filters.</p>}
+ </main>;
 }
-

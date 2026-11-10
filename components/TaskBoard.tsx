@@ -1,4 +1,5 @@
 "use client";
+import PhotoAttachments from "./PhotoAttachments";
 import WorkDayCountdown from "../components/WorkDayCountdown";
 import {readableDate,readableDateTime} from "../lib/dates";
 import { useEffect, useRef, useState } from "react";
@@ -825,6 +826,7 @@ export default function TaskBoard({
             {editorLoading && <p>Loading project team…</p>}
             {!isNew && (
               <div className="panel">
+                {editing.project_id && <PhotoAttachments task={editing.id}/>}
                 <h2>Updates & discussion</h2>
                 {!comments.length && <p className="muted">No updates yet.</p>}
                 {comments.map((c) => (

@@ -12,6 +12,7 @@ const primary = [
   ["/projects", "Projects", "▦"],
   ["/tasks", "My Tasks", "✓"],
   ["/schedule", "Schedule", "▤"],
+  ["/photos", "Photos", "▧"],
 ];
 export default function RootLayout({
   children,
@@ -30,6 +31,7 @@ export default function RootLayout({
     "/orientation",
     "/visitor",
     "/contractor-files",
+    "/shared-photos",
   ].includes(pathname);
   useEffect(() => {
     setMobile(false);

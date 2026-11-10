@@ -1,4 +1,5 @@
 "use client";
+import PhotoAttachments from "../../../components/PhotoAttachments";
 import {readableDate,readableDateTime} from "../../../lib/dates";
 import ReportContent from "../../../components/reports/ReportContent";
 
@@ -145,7 +146,8 @@ export default function ReportDetailPage() {
 
         <h3>Photos</h3>
 
-        {photos.length === 0 && <p>No photos uploaded.</p>}
+        <PhotoAttachments report={report.id}/>
+          {photos.length === 0 && <p>No photos uploaded.</p>}
 
         {photos.map((photo) => (
           <img

@@ -1,4 +1,6 @@
 "use client";
+import PhotoPicker from "../PhotoPicker";
+import {photoApi} from "../../lib/photos";
 import {readableDate,readableDateTime} from "../../lib/dates";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -35,6 +37,7 @@ export default function ReportForm({ reportId }: { reportId?: string }) {
     [preview, setPreview] = useState(false),
     [photo, setPhoto] = useState<File | null>(null),
     [photoUrl, setPhotoUrl] = useState("");
+  const [projectPhotos,setProjectPhotos]=useState<string[]>([]);
   const id = useRef(reportId || null),
     revision = useRef(0),
     saving = useRef(false),
@@ -175,6 +178,7 @@ export default function ReportForm({ reportId }: { reportId?: string }) {
             );
         }
       }
+      if(projectPhotos.length){try{await photoApi('link_report',{report:id.current,ids:projectPhotos});}catch(e){throw Error('Report saved, but project photos were not attached: '+(e as Error).message+' Retry Save to attach them.');}}
       dirty.current = false;
       window.location.href = `/reports/${id.current}`;
     } catch (e) {
@@ -221,7 +225,7 @@ export default function ReportForm({ reportId }: { reportId?: string }) {
                 required
                 disabled={!!id.current}
                 value={project}
-                onChange={(e) => setProject(e.target.value)}
+                onChange={(e) => {setProject(e.target.value);setProjectPhotos([]);}}
               >
                 <option value="">Select project</option>
                 {projects.map((p) => (
@@ -249,6 +253,7 @@ export default function ReportForm({ reportId }: { reportId?: string }) {
               />
             </label>
           </div>
+          <PhotoPicker project={project} selected={projectPhotos} onChange={ids=>{setProjectPhotos(ids);dirty.current=true;}}/>
           <div className="report-actions">
             <button type="button" onClick={() => setPreview(!preview)}>
               {preview ? "Back to editing" : "Preview formatting"}

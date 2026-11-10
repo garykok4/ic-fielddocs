@@ -1,4 +1,5 @@
 "use client";
+import ProjectPhotos from "../../../components/ProjectPhotos";
 import SavedSiteBriefs from "../../../components/SavedSiteBriefs";
 import ProjectSettings from "../../../components/ProjectSettings";
 import PreliminaryBudget from "../../../components/PreliminaryBudget";
@@ -27,6 +28,7 @@ const tabs = [
   ["schedule", "Schedule"],
   ["tasks", "Tasks"],
   ["files", "Files"],
+  ["photos", "Photos"],
   ["budget", "Budget"],
   ["costs", "Cost control"],
   ["customer", "Customer summary"],
@@ -43,6 +45,7 @@ export default function ProjectWorkspace() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true);
   const [planningStart,setPlanningStart]=useState(false);
+  const [photosBusy,setPhotosBusy]=useState(false);
   const [settingsDirty,setSettingsDirty]=useState(false);
   const [budgetDirty,setBudgetDirty]=useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -112,6 +115,7 @@ export default function ProjectWorkspace() {
     };
   }, [profile, tab, id]);
   function choose(next: string) {
+    if(tab==="photos"&&next!==tab&&photosBusy){alert("Please wait for the photo operation to finish before changing tabs.");return;}
     if(tab==="budget"&&next!==tab&&budgetDirty&&!confirm("Leave this budget and discard unsaved changes?"))return;
     if(tab==="settings"&&next!==tab&&settingsDirty&&!confirm("Leave settings and discard unsaved changes?"))return;
     setPlanningStart(next==="preconstruction");
@@ -354,6 +358,7 @@ export default function ProjectWorkspace() {
               projectName={project?.project_name || "Project"}
             />
           )}
+          {tab === "photos" && <ProjectPhotos key={id} project={id} projectName={project?.project_name || "Project"} onBusy={setPhotosBusy}/>}
           {tab === "settings" && <ProjectSettings key={id} project={id} profile={profile} onDirty={setSettingsDirty} onSaved={p=>setProjects(rows=>rows.map(row=>row.id===p.id?{...row,...p}:row))}/>}
           {tab === "budget" && <PreliminaryBudget key={id} fixedProject={id} onDirty={setBudgetDirty}/>}
           {tab === "costs" && <CostControl key={id} project={id} projectName={project?.project_name || "Project"}/>}
@@ -445,6 +450,7 @@ export default function ProjectWorkspace() {
                   </table>
                 </div>
               )}
+              <ProjectPhotos key={"customer-photos-"+id} project={id} projectName={project?.project_name || "Project"} customer/>
               <SavedSiteBriefs key={id} project={id}/>
               <p className="muted no-print">
                 Only activities marked for customers appear. Internal notes,

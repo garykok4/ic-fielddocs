@@ -1,7 +1,8 @@
+import {allProjectPhotos,photoApi} from "./photos";
 import { supabase } from "./supabase";
 import { Activity, Snapshot, calculate } from "../app/schedule/engine";
 import { isoDay, shiftDate, validDate } from "./work-calendar";
-export type ReviewPhoto = {id: string; report_id: string; file_url: string; report_date: string};
+export type ReviewPhoto = {id: string; report_id: string; file_url: string; report_date: string; caption?:string; asset_id?:string; source?:string};
 export type ReviewData = {snapshot: Snapshot; tasks: Activity[]; photos: ReviewPhoto[]};
 export function weekStart(date: string) {
   if (!validDate(date)) throw Error("Choose a valid week.");
@@ -28,8 +29,12 @@ export async function loadWeekReview(project: string, start: string): Promise<Re
       if((r.data || []).length<500) break;
     }
   }
+  const projectPhotos=await allProjectPhotos(project,{from:start,to:end});
+  const seen=new Set<string>();
+  for(const p of projectPhotos){seen.add(p.id);photos.push({id:p.id,report_id:'',file_url:p.url,report_date:p.taken_on,caption:p.caption,asset_id:p.display_asset,source:'project'});}
+  for(const report of reports){const attached=await photoApi('report_photos',{report:report.id});for(const p of attached.photos){if(!seen.has(p.id)){seen.add(p.id);photos.push({id:p.id,report_id:report.id,file_url:p.url,report_date:report.report_date,caption:p.caption,asset_id:p.asset_id,source:'project'});}}}
   return {snapshot:schedule.data, tasks:calculate(schedule.data.tasks,schedule.data.links, undefined, schedule.data.closures).filter(t=>t.item_type==='task' && t.start<=end && t.finish>=start),photos:photos.sort((a,b)=>a.report_date.localeCompare(b.report_date)||a.id.localeCompare(b.id))};
 }
 export function reviewSignature(data: ReviewData) {
-  return JSON.stringify([data.snapshot.revision,data.photos.map(p=>[p.id,p.report_date,p.file_url])]);
+  return JSON.stringify([data.snapshot.revision,data.photos.map(p=>[p.id,p.report_date,p.asset_id||p.file_url,p.caption])]);
 }

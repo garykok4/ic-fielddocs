@@ -1,4 +1,5 @@
 "use client";
+import PhotoAttachments from "../../../components/PhotoAttachments";
 import {readableDate,readableDateTime} from "../../../lib/dates";
 import ReportContent from "../../../components/reports/ReportContent";
 
@@ -261,6 +262,7 @@ export default function PrintReportsPage() {
 
           <h3>Photos</h3>
 
+          <PhotoAttachments report={report.id}/>
           {(photosByReport[report.id] || []).length === 0 && (
             <p>No photos uploaded.</p>
           )}
