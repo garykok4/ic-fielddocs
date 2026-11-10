@@ -56,9 +56,13 @@ export async function POST(request:Request){try{
   const info=checked(await db.storage.from(PHOTO_BUCKET).info(a.object_path));
   if(Number(info.size)!==Number(a.bytes))throw new FileError('Upload size did not match. Retry the upload.');
   const signed=checked(await db.storage.from(PHOTO_BUCKET).createSignedUrl(a.object_path,60));
-  const res=await fetch(signed.signedUrl,{headers:{Range:'bytes=0-15'},cache:'no-store'});
+  const res=await fetch(signed.signedUrl,{
+  headers:{Range:'bytes=0-15'},
+  cache:'no-store',
+  signal:AbortSignal.timeout(20000)
+});
   if(!res.ok||!res.body)throw new FileError('Unable to verify uploaded photo. Retry.');
-  const reader=res.body.getReader();const data=new Uint8Array(16);let received=0;try{while(received<16){const part=await reader.read();if(part.done)break;const piece=part.value.subarray(0,16-received);data.set(piece,received);received+=piece.length;}}finally{await reader.cancel();}
+  const reader=res.body.getReader();const data=new Uint8Array(16);let received=0;try{while(received<16){const part=await reader.read();if(part.done)break;const piece=part.value.subarray(0,16-received);data.set(piece,received);received+=piece.length;}}finally{void reader.cancel().catch(()=>{});}
   const jpg=data[0]===255&&data[1]===216&&data[2]===255,png=[137,80,78,71,13,10,26,10].every((n,i)=>data[i]===n),webp=new TextDecoder().decode(data.slice(0,4))==='RIFF'&&new TextDecoder().decode(data.slice(8,12))==='WEBP';
   if(!(a.mime==='image/jpeg'?jpg:a.mime==='image/png'?png:webp))throw new FileError('The file contents are not a supported photo.');
   checked(await db.rpc('fd_photo_finish',{p_asset:a.id,p_actor:actor.id}));return json({ok:true});
